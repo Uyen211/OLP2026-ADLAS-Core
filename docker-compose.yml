@@ -1,9 +1,85 @@
+# Copyright (c) 2026 ADLAS Team - OLP 2026 Open Source Software Track
+# SPDX-License-Identifier: MIT
+
 services:
+  # =========================================================================
+  # CORE SERVICES (Always run with: docker compose up -d)
+  # Ultra-lightweight footprint (~250MB RAM total)
+  # =========================================================================
+
+  # Tier 1: PostgreSQL 16 with pgvector extension
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: adlas-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-postgres}
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-AdlasPass2026}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./infra/database/init-scripts:/docker-entrypoint-initdb.d:ro
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    networks:
+      - adlas-network
+    deploy:
+      resources:
+        limits:
+          memory: 384M
+
+  # Tier 2: FastAPI Core Application Engine
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    image: adlas-backend:latest
+    container_name: adlas-backend
+    restart: unless-stopped
+    env_file:
+      - .env
+    ports:
+      - "${BACKEND_PORT:-8080}:8080"
+    networks:
+      - adlas-network
+    depends_on:
+      - postgres
+    deploy:
+      resources:
+        limits:
+          memory: 384M
+
+  # Tier 2: React 18 Application Client (Nginx SPA, ~15MB)
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    image: adlas-frontend:latest
+    container_name: adlas-frontend
+    restart: unless-stopped
+    ports:
+      - "${FRONTEND_PORT:-5174}:80"
+    networks:
+      - adlas-network
+    depends_on:
+      - backend
+    deploy:
+      resources:
+        limits:
+          memory: 64M
+
+  # =========================================================================
+  # EXTENDED PROFILE: full (Run only for OLP Final Demo / Full Cloud Simulation)
+  # Run command: docker compose --profile full up -d
+  # =========================================================================
+
   # Tier 1: Kong API Gateway
   kong:
     image: kong:latest
     container_name: adlas-gateway
     restart: unless-stopped
+    profiles:
+      - full
     environment:
       KONG_DATABASE: "off"
       KONG_DECLARATIVE_CONFIG: /etc/kong/kong.yml
@@ -23,32 +99,13 @@ services:
       - postgres
       - backend
 
-  # Tier 1: PostgreSQL 16 with pgvector extension
-  postgres:
-    image: pgvector/pgvector:pg16
-    container_name: adlas-postgres
-    restart: unless-stopped
-    environment:
-      POSTGRES_DB: ${POSTGRES_DB:-adlas_db}
-      POSTGRES_USER: ${POSTGRES_USER:-adlas_admin}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-adlas_secure_password}
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-      - ./infra/database/init-scripts:/docker-entrypoint-initdb.d:ro
-    ports:
-      - "${POSTGRES_PORT:-5432}:5432"
-    networks:
-      - adlas-network
-    deploy:
-      resources:
-        limits:
-          memory: 1024M
-
   # Tier 1: Supabase GoTrue Auth Service (Identity / JWT / TOTP)
   auth:
     image: supabase/gotrue:v2.158.1
     container_name: adlas-auth
     restart: unless-stopped
+    profiles:
+      - full
     depends_on:
       - postgres
     environment:
@@ -56,8 +113,8 @@ services:
       GOTRUE_API_PORT: 9999
       API_EXTERNAL_URL: "http://localhost:8000/auth/v1"
       GOTRUE_DB_DRIVER: postgres
-      GOTRUE_DB_DATABASE_URL: "postgres://${POSTGRES_USER:-adlas_admin}:${POSTGRES_PASSWORD:-adlas_secure_password}@postgres:5432/${POSTGRES_DB:-adlas_db}?sslmode=disable"
-      GOTRUE_SITE_URL: "http://localhost:5173"
+      GOTRUE_DB_DATABASE_URL: "postgres://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-AdlasPass2026}@postgres:5432/${POSTGRES_DB:-postgres}?sslmode=disable"
+      GOTRUE_SITE_URL: "http://localhost:5174"
       GOTRUE_JWT_SECRET: "${JWT_SECRET:-adlas-default-jwt-secret-key-super-secure-32bytes}"
       GOTRUE_JWT_EXP: 3600
       GOTRUE_DISABLE_SIGNUP: "false"
@@ -73,12 +130,14 @@ services:
     image: supabase/studio:latest
     container_name: adlas-studio
     restart: unless-stopped
+    profiles:
+      - full
     depends_on:
       - postgres
     environment:
       STUDIO_PG_META_URL: "http://postgres:5432"
-      POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:-adlas_secure_password}"
-      SUPABASE_URL: "http://kong:8000"
+      POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:-AdlasPass2026}"
+      SUPABASE_URL: "http://backend:8080"
       SUPABASE_REST_URL: "http://backend:8080/api/v1"
     ports:
       - "54323:3000"
@@ -89,11 +148,13 @@ services:
         limits:
           memory: 256M
 
-  # Tier 1: MinIO S3-Compatible Object Storage
+  # Tier 1: S3-Compatible Object Storage
   minio:
     image: zenko/cloudserver:latest
     container_name: adlas-storage
     restart: unless-stopped
+    profiles:
+      - full
     environment:
       SCALITY_ACCESS_KEY_ID: ${MINIO_ROOT_USER:-minio_admin}
       SCALITY_SECRET_ACCESS_KEY: ${MINIO_ROOT_PASSWORD:-minio_secure_password}
@@ -107,45 +168,12 @@ services:
     deploy:
       resources:
         limits:
-          memory: 512M
+          memory: 256M
 
-  # Tier 2: FastAPI Core Application Engine
-  backend:
-    build:
-      context: ./backend
-      dockerfile: Dockerfile
-    container_name: adlas-backend
-    restart: unless-stopped
-    env_file:
-      - .env
-    ports:
-      - "${BACKEND_PORT:-8080}:8080"
-    networks:
-      - adlas-network
-    depends_on:
-      - postgres
-      - minio
-    deploy:
-      resources:
-        limits:
-          memory: 768M
-
-  # Tier 2: React 18 Application Client (Nginx)
-  frontend:
-    build:
-      context: ./frontend
-      dockerfile: Dockerfile
-    container_name: adlas-frontend
-    restart: unless-stopped
-    ports:
-      - "${FRONTEND_PORT:-5174}:80"
-    networks:
-      - adlas-network
-    depends_on:
-      - backend
-
-  # Optional Offline Profile: Ollama Local Inference Server
-  # Run only when explicitly requested: docker compose --profile offline up
+  # =========================================================================
+  # EXTENDED PROFILE: offline (Ollama Local LLM Inference Server)
+  # Run command: docker compose --profile offline up -d
+  # =========================================================================
   ollama:
     image: ollama/ollama:latest
     container_name: adlas-ollama
