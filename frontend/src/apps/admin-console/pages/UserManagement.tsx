@@ -223,7 +223,7 @@ export const UserManagement: React.FC = () => {
                   setSearchQuery(e.target.value);
                   setCurrentPage(1);
                 }}
-                placeholder="Search user code, name, email..."
+                placeholder="Tìm kiếm mã, tên, email..."
                 className="w-full pl-10 pr-4 py-2 text-sm bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
               />
             </div>
@@ -237,9 +237,9 @@ export const UserManagement: React.FC = () => {
                 }}
                 className="px-3 py-2 text-sm bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all text-slate-700"
               >
-                <option value="">All Roles</option>
-                <option value="ADMIN">ADMIN Only</option>
-                <option value="USER">USER Only</option>
+                <option value="">Tất cả Vai trò</option>
+                <option value="ADMIN">Chỉ Quản trị viên</option>
+                <option value="USER">Chỉ Người dùng</option>
               </select>
 
               <select
@@ -250,8 +250,8 @@ export const UserManagement: React.FC = () => {
                 }}
                 className="px-3 py-2 text-sm bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all text-slate-700"
               >
-                <option value="">All Statuses</option>
-                <option value="true">Active Only</option>
+                <option value="">Tất cả Trạng thái</option>
+                <option value="true">Chỉ Hoạt động</option>
                 <option value="false">Locked Only</option>
               </select>
             </div>
@@ -262,11 +262,11 @@ export const UserManagement: React.FC = () => {
             <table className="w-full text-left text-sm">
               <thead className="bg-slate-50 text-slate-600 text-xs uppercase tracking-wider font-semibold border-b border-slate-100">
                 <tr>
-                  <th className="px-6 py-3.5">User Identity</th>
+                  <th className="px-6 py-3.5">Thông tin Người dùng</th>
                   <th className="px-6 py-3.5">System Role</th>
-                  <th className="px-6 py-3.5">Status</th>
+                  <th className="px-6 py-3.5">Trạng thái</th>
                   <th className="px-6 py-3.5">Created At</th>
-                  <th className="px-6 py-3.5 text-right">Actions</th>
+                  <th className="px-6 py-3.5 text-right">Hành động</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
@@ -380,7 +380,7 @@ export const UserManagement: React.FC = () => {
                   <th className="px-6 py-3.5">Client IP</th>
                   <th className="px-6 py-3.5">User Agent</th>
                   <th className="px-6 py-3.5">Issued At</th>
-                  <th className="px-6 py-3.5">Status</th>
+                  <th className="px-6 py-3.5">Trạng thái</th>
                   <th className="px-6 py-3.5 text-right">Action</th>
                 </tr>
               </thead>

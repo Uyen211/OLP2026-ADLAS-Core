@@ -205,7 +205,7 @@ export const GatewayMonitoring: React.FC = () => {
         {/* Card 1: Gateway Status */}
         <div className="p-5 bg-white rounded-2xl border border-slate-200 shadow-card">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Gateway Status</span>
+            <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Trạng Thái Cổng Gateway</span>
             <span className="flex h-2.5 w-2.5 relative">
               <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
               <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500" />
@@ -290,7 +290,7 @@ export const GatewayMonitoring: React.FC = () => {
               <tr>
                 <th className="px-6 py-3.5">Subsystem Module</th>
                 <th className="px-6 py-3.5">Route Prefix</th>
-                <th className="px-6 py-3.5">Health Status</th>
+                <th className="px-6 py-3.5">Tình Trạng Sức Khỏe</th>
                 <th className="px-6 py-3.5">Load (Req/min)</th>
                 <th className="px-6 py-3.5">Response Latency</th>
                 <th className="px-6 py-3.5">Error Rate</th>
