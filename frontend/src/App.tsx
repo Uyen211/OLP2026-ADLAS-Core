@@ -15,6 +15,7 @@ import {
   UserCheck,
 } from "lucide-react";
 import { GatewayMonitoring } from "./apps/admin-console/pages/GatewayMonitoring";
+import { StorageConfiguration } from "./apps/admin-console/pages/StorageConfiguration";
 import { UserManagement } from "./apps/admin-console/pages/UserManagement";
 
 export const App: React.FC = () => {
@@ -151,6 +152,8 @@ export const App: React.FC = () => {
             <UserManagement />
           ) : activeMenu === "gateway" ? (
             <GatewayMonitoring />
+          ) : activeMenu === "storage" ? (
+            <StorageConfiguration />
           ) : (
             <div className="p-12 text-center bg-white rounded-2xl border border-slate-200 shadow-card">
               <Server className="w-12 h-12 text-slate-300 mx-auto mb-3" />
