@@ -43,15 +43,34 @@ async def get_current_admin(
                 pass
 
     # Fallback default System Administrator for development and bootstrap
-    return User(
-        id=uuid.UUID("00000000-0000-0000-0000-000000000001"),
-        email="admin@adlas.edu.vn",
-        user_code="SYSADMIN",
-        full_name="Platform System Administrator",
-        password_hash="system_managed",
-        system_role="ADMIN",
-        is_active=True
-    )
+    service = SystemAuthService(db)
+    existing_admin = await service.repo.get_user_by_email("admin@adlas.edu.vn")
+    if existing_admin:
+        return existing_admin
+
+    # Bootstrap default platform admin if not yet seeded
+    try:
+        bootstrapped = await service.repo.create_user(
+            email="admin@adlas.edu.vn",
+            user_code="SYSADMIN",
+            full_name="Platform System Administrator",
+            password_hash="system_managed",
+            system_role="ADMIN"
+        )
+        await db.commit()
+        return bootstrapped
+    except Exception:
+        await db.rollback()
+        # Return fallback with id=None to satisfy foreign key nullability
+        return User(
+            id=None,
+            email="admin@adlas.edu.vn",
+            user_code="SYSADMIN",
+            full_name="Platform System Administrator",
+            password_hash="system_managed",
+            system_role="ADMIN",
+            is_active=True
+        )
 
 
 @router.get("/users", response_model=PaginatedUsersResponse)
