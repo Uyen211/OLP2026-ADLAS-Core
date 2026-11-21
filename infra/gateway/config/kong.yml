@@ -1,0 +1,33 @@
+_format_version: "3.0"
+
+services:
+  - name: backend-api
+    url: http://backend:8080/api/v1
+    routes:
+      - name: api-routes
+        paths:
+          - /api/v1
+        strip_path: false
+    plugins:
+      - name: rate-limiting
+        config:
+          minute: 120
+          policy: local
+      - name: cors
+        config:
+          origins:
+            - "*"
+          methods:
+            - GET
+            - POST
+            - PUT
+            - PATCH
+            - DELETE
+            - OPTIONS
+          headers:
+            - Accept
+            - Authorization
+            - Content-Type
+            - Origin
+          credentials: true
+          max_age: 3600
