@@ -14,6 +14,7 @@ import {
   Shield,
   UserCheck,
 } from "lucide-react";
+import { GatewayMonitoring } from "./apps/admin-console/pages/GatewayMonitoring";
 import { UserManagement } from "./apps/admin-console/pages/UserManagement";
 
 export const App: React.FC = () => {
@@ -148,6 +149,8 @@ export const App: React.FC = () => {
         <main className="flex-1 overflow-y-auto p-8">
           {activeMenu === "identity" ? (
             <UserManagement />
+          ) : activeMenu === "gateway" ? (
+            <GatewayMonitoring />
           ) : (
             <div className="p-12 text-center bg-white rounded-2xl border border-slate-200 shadow-card">
               <Server className="w-12 h-12 text-slate-300 mx-auto mb-3" />
