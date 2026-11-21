@@ -10,7 +10,7 @@ from dotenv import load_dotenv
 
 
 async def setup_database():
-    env_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", ".env"))
+    env_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".env"))
     load_dotenv(env_path)
 
     db_url = os.getenv("DATABASE_URL")
@@ -23,7 +23,6 @@ async def setup_database():
     sql_path = os.path.abspath(
         os.path.join(
             os.path.dirname(__file__),
-            "..",
             "..",
             "infra",
             "database",
