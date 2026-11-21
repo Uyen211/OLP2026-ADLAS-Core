@@ -15,7 +15,9 @@ import {
   UserCheck,
 } from "lucide-react";
 import { GatewayMonitoring } from "./apps/admin-console/pages/GatewayMonitoring";
+import { HealthDashboard } from "./apps/admin-console/pages/HealthDashboard";
 import { StorageConfiguration } from "./apps/admin-console/pages/StorageConfiguration";
+import { TaskQueueMonitor } from "./apps/admin-console/pages/TaskQueueMonitor";
 import { UserManagement } from "./apps/admin-console/pages/UserManagement";
 
 export const App: React.FC = () => {
@@ -154,6 +156,10 @@ export const App: React.FC = () => {
             <GatewayMonitoring />
           ) : activeMenu === "storage" ? (
             <StorageConfiguration />
+          ) : activeMenu === "eventbus" ? (
+            <TaskQueueMonitor />
+          ) : activeMenu === "health" ? (
+            <HealthDashboard />
           ) : (
             <div className="p-12 text-center bg-white rounded-2xl border border-slate-200 shadow-card">
               <Server className="w-12 h-12 text-slate-300 mx-auto mb-3" />
