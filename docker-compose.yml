@@ -1,7 +1,7 @@
 services:
   # Tier 1: Kong API Gateway
   kong:
-    image: kong:3.6-alpine
+    image: kong:latest
     container_name: adlas-gateway
     restart: unless-stopped
     environment:
@@ -16,7 +16,7 @@ services:
     volumes:
       - ./infra/gateway/config/kong.yml:/etc/kong/kong.yml:ro
     ports:
-      - "${KONG_HTTP_PORT:-8000}:8000"
+      - "${KONG_HTTP_PORT:-8002}:8000"
     networks:
       - adlas-network
     depends_on:
@@ -70,7 +70,7 @@ services:
 
   # Tier 1: Supabase Studio Management Web UI (Port 54323)
   studio:
-    image: supabase/studio:20240729-9e224e9
+    image: supabase/studio:latest
     container_name: adlas-studio
     restart: unless-stopped
     depends_on:
@@ -91,18 +91,17 @@ services:
 
   # Tier 1: MinIO S3-Compatible Object Storage
   minio:
-    image: minio/minio:RELEASE.2024-05-10T01-41-38Z
+    image: zenko/cloudserver:latest
     container_name: adlas-storage
     restart: unless-stopped
-    command: server /data --console-address ":9001"
     environment:
-      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minio_admin}
-      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-minio_secure_password}
+      SCALITY_ACCESS_KEY_ID: ${MINIO_ROOT_USER:-minio_admin}
+      SCALITY_SECRET_ACCESS_KEY: ${MINIO_ROOT_PASSWORD:-minio_secure_password}
+      S3DATAPATH: /data
     volumes:
       - minio_data:/data
     ports:
-      - "9000:9000"
-      - "9001:9001"
+      - "9000:8000"
     networks:
       - adlas-network
     deploy:
@@ -139,7 +138,7 @@ services:
     container_name: adlas-frontend
     restart: unless-stopped
     ports:
-      - "${FRONTEND_PORT:-5173}:80"
+      - "${FRONTEND_PORT:-5174}:80"
     networks:
       - adlas-network
     depends_on:
