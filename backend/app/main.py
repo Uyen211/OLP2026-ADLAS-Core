@@ -4,6 +4,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.core.config import settings
+from app.modules.system.router import router as system_router
 
 app = FastAPI(
     title=settings.PROJECT_NAME,
@@ -22,6 +23,9 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Include Bounded Context Routers
+app.include_router(system_router)
 
 
 @app.get("/health", tags=["System"])
