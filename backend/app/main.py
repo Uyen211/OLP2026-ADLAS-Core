@@ -4,6 +4,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.core.config import settings
+from app.modules.system.gateway_router import router as gateway_router
 from app.modules.system.router import router as system_router
 
 app = FastAPI(
@@ -26,6 +27,7 @@ app.add_middleware(
 
 # Include Bounded Context Routers
 app.include_router(system_router)
+app.include_router(gateway_router)
 
 
 @app.get("/health", tags=["System"])
