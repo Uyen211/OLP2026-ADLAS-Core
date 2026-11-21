@@ -44,6 +44,51 @@ services:
         limits:
           memory: 1024M
 
+  # Tier 1: Supabase GoTrue Auth Service (Identity / JWT / TOTP)
+  auth:
+    image: supabase/gotrue:v2.158.1
+    container_name: adlas-auth
+    restart: unless-stopped
+    depends_on:
+      - postgres
+    environment:
+      GOTRUE_API_HOST: "0.0.0.0"
+      GOTRUE_API_PORT: 9999
+      API_EXTERNAL_URL: "http://localhost:8000/auth/v1"
+      GOTRUE_DB_DRIVER: postgres
+      GOTRUE_DB_DATABASE_URL: "postgres://${POSTGRES_USER:-adlas_admin}:${POSTGRES_PASSWORD:-adlas_secure_password}@postgres:5432/${POSTGRES_DB:-adlas_db}?sslmode=disable"
+      GOTRUE_SITE_URL: "http://localhost:5173"
+      GOTRUE_JWT_SECRET: "${JWT_SECRET:-adlas-default-jwt-secret-key-super-secure-32bytes}"
+      GOTRUE_JWT_EXP: 3600
+      GOTRUE_DISABLE_SIGNUP: "false"
+    networks:
+      - adlas-network
+    deploy:
+      resources:
+        limits:
+          memory: 128M
+
+  # Tier 1: Supabase Studio Management Web UI (Port 54323)
+  studio:
+    image: supabase/studio:20240729-9e224e9
+    container_name: adlas-studio
+    restart: unless-stopped
+    depends_on:
+      - postgres
+    environment:
+      STUDIO_PG_META_URL: "http://postgres:5432"
+      POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:-adlas_secure_password}"
+      SUPABASE_URL: "http://kong:8000"
+      SUPABASE_REST_URL: "http://backend:8080/api/v1"
+    ports:
+      - "54323:3000"
+    networks:
+      - adlas-network
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+
   # Tier 1: MinIO S3-Compatible Object Storage
   minio:
     image: minio/minio:RELEASE.2024-05-10T01-41-38Z
