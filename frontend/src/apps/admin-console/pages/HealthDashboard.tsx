@@ -170,7 +170,7 @@ export const HealthDashboard: React.FC = () => {
               }}
               className="px-2.5 py-1.5 text-xs bg-white border border-slate-200 rounded-lg text-slate-700"
             >
-              <option value="">All Modules</option>
+              <option value="">Tất Cả Phân Hệ</option>
               <option value="identity">Identity</option>
               <option value="gateway">Gateway</option>
               <option value="storage">Storage</option>
@@ -185,7 +185,7 @@ export const HealthDashboard: React.FC = () => {
               }}
               className="px-2.5 py-1.5 text-xs bg-white border border-slate-200 rounded-lg text-slate-700"
             >
-              <option value="">All Severities</option>
+              <option value="">Tất Cả Mức Độ</option>
               <option value="INFO">INFO</option>
               <option value="WARNING">WARNING</option>
               <option value="CRITICAL">CRITICAL</option>
@@ -198,11 +198,11 @@ export const HealthDashboard: React.FC = () => {
           <table className="w-full text-left text-sm">
             <thead className="bg-slate-50 text-slate-600 text-xs uppercase tracking-wider font-semibold border-b border-slate-100">
               <tr>
-                <th className="px-6 py-3.5">Timestamp</th>
+                <th className="px-6 py-3.5">Thời Gian Ghi Nhận</th>
                 <th className="px-6 py-3.5">Actor</th>
                 <th className="px-6 py-3.5">Action</th>
-                <th className="px-6 py-3.5">Module</th>
-                <th className="px-6 py-3.5">Severity</th>
+                <th className="px-6 py-3.5">Phân Hệ</th>
+                <th className="px-6 py-3.5">Mức Độ</th>
                 <th className="px-6 py-3.5">Source IP</th>
                 <th className="px-6 py-3.5 text-right">Details</th>
               </tr>

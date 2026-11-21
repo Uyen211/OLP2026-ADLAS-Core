@@ -26,31 +26,31 @@ export const App: React.FC = () => {
   const navigationItems = [
     {
       id: "identity",
-      label: "Identity & RBAC",
+      label: "Định danh & Phân quyền (RBAC)",
       badge: "T1-C-M0-01",
       icon: Shield,
     },
     {
       id: "gateway",
-      label: "Kong API Gateway",
+      label: "Cổng API Gateway (Kong)",
       badge: "T1-C-M0-02",
       icon: Globe,
     },
     {
       id: "storage",
-      label: "Database & Storage",
+      label: "Cơ sở dữ liệu & Lưu trữ (S3)",
       badge: "T1-C-M0-03",
       icon: Database,
     },
     {
       id: "eventbus",
-      label: "Event Bus & Workers",
+      label: "Hàng đợi sự kiện & Tác vụ nền",
       badge: "T1-C-M0-04",
       icon: Radio,
     },
     {
       id: "health",
-      label: "Health & Audit Trail",
+      label: "Giám sát & Nhật ký kiểm toán",
       badge: "T1-C-M0-05",
       icon: Activity,
     },
@@ -71,7 +71,7 @@ export const App: React.FC = () => {
                 ADLAS Core
               </h2>
               <span className="text-xs text-slate-400 font-mono">
-                Tier-1 Admin Console
+                Quản trị Hạ tầng Tầng 1
               </span>
             </div>
           </div>
@@ -79,7 +79,7 @@ export const App: React.FC = () => {
           {/* Navigation Links */}
           <nav className="p-4 space-y-1">
             <div className="px-3 py-2 text-xs font-semibold text-slate-400 uppercase tracking-wider">
-              Platform Modules
+              Mô-đun Nền tảng Lõi
             </div>
 
             {navigationItems.map((item) => {
@@ -118,8 +118,8 @@ export const App: React.FC = () => {
           <div className="flex items-center gap-3 p-3 bg-white rounded-xl border border-slate-200">
             <div className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse" />
             <div className="flex-1 min-w-0">
-              <p className="text-xs font-medium text-slate-800 truncate">Supabase & Kong Online</p>
-              <p className="text-[10px] font-mono text-slate-400">PostgreSQL 16 - ACID Mode</p>
+              <p className="text-xs font-medium text-slate-800 truncate">Supabase & Kong Đang Hoạt Động</p>
+              <p className="text-[10px] font-mono text-slate-400">PostgreSQL 16 - Chuẩn ACID</p>
             </div>
             <Server className="w-4 h-4 text-slate-400" />
           </div>
@@ -131,7 +131,7 @@ export const App: React.FC = () => {
         {/* Top Navbar */}
         <header className="h-16 bg-white border-b border-slate-200 px-8 flex items-center justify-between flex-shrink-0">
           <div className="flex items-center gap-2 text-xs font-mono text-slate-500">
-            <span>PLATFORM</span>
+            <span>HẠ TẦNG</span>
             <span>/</span>
             <span className="text-slate-800 font-semibold uppercase">{activeMenu}</span>
           </div>
@@ -139,10 +139,10 @@ export const App: React.FC = () => {
           <div className="flex items-center gap-4">
             <div className="flex items-center gap-2.5 px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-pill text-xs">
               <UserCheck className="w-4 h-4 text-emerald-600" />
-              <span className="text-slate-600">Logged in as:</span>
+              <span className="text-slate-600">Đăng nhập bởi:</span>
               <span className="font-semibold text-slate-900">admin@adlas.edu.vn</span>
               <span className="px-1.5 py-0.2 text-[10px] bg-blue-100 text-blue-700 font-mono font-bold rounded">
-                SYSADMIN
+                QUẢN TRỊ VIÊN
               </span>
             </div>
           </div>
