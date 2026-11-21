@@ -7,6 +7,7 @@ from app.core.config import settings
 from app.modules.system.gateway_router import router as gateway_router
 from app.modules.system.router import router as system_router
 from app.modules.system.storage_router import router as storage_router
+from app.modules.system.workflow_router import router as workflow_router
 
 app = FastAPI(
     title=settings.PROJECT_NAME,
@@ -30,6 +31,7 @@ app.add_middleware(
 app.include_router(system_router)
 app.include_router(gateway_router)
 app.include_router(storage_router)
+app.include_router(workflow_router)
 
 
 @app.get("/health", tags=["System"])
