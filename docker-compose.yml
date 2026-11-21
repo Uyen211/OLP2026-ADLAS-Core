@@ -1,3 +1,6 @@
+# Copyright (c) 2026 ADLAS Team - OLP 2026 Open Source Software Track
+# SPDX-License-Identifier: MIT
+
 services:
   # Tier 1: Kong API Gateway
   kong:
@@ -42,7 +45,7 @@ services:
     deploy:
       resources:
         limits:
-          memory: 1024M
+          memory: 512M
 
   # Tier 1: Supabase GoTrue Auth Service (Identity / JWT / TOTP)
   auth:
@@ -57,7 +60,7 @@ services:
       API_EXTERNAL_URL: "http://localhost:8000/auth/v1"
       GOTRUE_DB_DRIVER: postgres
       GOTRUE_DB_DATABASE_URL: "postgres://${POSTGRES_USER:-adlas_admin}:${POSTGRES_PASSWORD:-adlas_secure_password}@postgres:5432/${POSTGRES_DB:-adlas_db}?sslmode=disable"
-      GOTRUE_SITE_URL: "http://localhost:5173"
+      GOTRUE_SITE_URL: "http://localhost:5174"
       GOTRUE_JWT_SECRET: "${JWT_SECRET:-adlas-default-jwt-secret-key-super-secure-32bytes}"
       GOTRUE_JWT_EXP: 3600
       GOTRUE_DISABLE_SIGNUP: "false"
@@ -78,7 +81,7 @@ services:
     environment:
       STUDIO_PG_META_URL: "http://postgres:5432"
       POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:-adlas_secure_password}"
-      SUPABASE_URL: "http://kong:8000"
+      SUPABASE_URL: "http://backend:8080"
       SUPABASE_REST_URL: "http://backend:8080/api/v1"
     ports:
       - "54323:3000"
@@ -89,7 +92,7 @@ services:
         limits:
           memory: 256M
 
-  # Tier 1: MinIO S3-Compatible Object Storage
+  # Tier 1: S3-Compatible Object Storage
   minio:
     image: zenko/cloudserver:latest
     container_name: adlas-storage
@@ -107,7 +110,7 @@ services:
     deploy:
       resources:
         limits:
-          memory: 512M
+          memory: 256M
 
   # Tier 2: FastAPI Core Application Engine
   backend:
@@ -124,11 +127,10 @@ services:
       - adlas-network
     depends_on:
       - postgres
-      - minio
     deploy:
       resources:
         limits:
-          memory: 768M
+          memory: 512M
 
   # Tier 2: React 18 Application Client (Nginx)
   frontend:
@@ -143,25 +145,10 @@ services:
       - adlas-network
     depends_on:
       - backend
-
-  # Optional Offline Profile: Ollama Local Inference Server
-  # Run only when explicitly requested: docker compose --profile offline up
-  ollama:
-    image: ollama/ollama:latest
-    container_name: adlas-ollama
-    restart: unless-stopped
-    profiles:
-      - offline
-    volumes:
-      - ollama_data:/root/.ollama
-    ports:
-      - "11434:11434"
-    networks:
-      - adlas-network
     deploy:
       resources:
         limits:
-          memory: 8192M
+          memory: 64M
 
 networks:
   adlas-network:
@@ -170,4 +157,3 @@ networks:
 volumes:
   postgres_data:
   minio_data:
-  ollama_data:
