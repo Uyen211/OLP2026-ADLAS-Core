@@ -258,7 +258,7 @@ class WorkflowAdminService:
             CoreInfrastructureHealth(
                 component_id="gotrue-auth",
                 name="Supabase GoTrue Auth Service",
-                endpoint="https://qouxwgjpnpxaorzyxjvp.supabase.co/auth/v1/health",
+                endpoint=f"{os.getenv('SUPABASE_URL', 'http://localhost:8000')}/auth/v1/health",
                 status="HEALTHY",
                 latency_ms=14.5,
                 details={"jwt_algorithm": "HS256", "rate_limit_per_ip": 60},
