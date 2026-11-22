@@ -3,8 +3,20 @@
  * SPDX-License-Identifier: MIT
  */
 
+export interface KongLiveTelemetry {
+  is_live: boolean;
+  server_version?: string | null;
+  connections_active: number;
+  connections_reading: number;
+  connections_writing: number;
+  connections_waiting: number;
+  total_requests: number;
+  database_reachable: boolean;
+}
+
 export interface GatewayMetrics {
   status: "ONLINE" | "DEGRADED" | "OFFLINE";
+  telemetry_source?: "KONG_LIVE" | "FALLBACK_RESILIENT";
   total_rps: number;
   average_latency_ms: number;
   success_rate_pct: number;
@@ -12,6 +24,7 @@ export interface GatewayMetrics {
   p99_latency_ms: number;
   active_connections: number;
   timestamp: string;
+  kong_telemetry?: KongLiveTelemetry | null;
 }
 
 export interface ServiceModuleHealth {

@@ -36,6 +36,9 @@ class Settings(BaseSettings):
     OLLAMA_MODEL_CODE: str = "qwen2.5-coder:7b"
     OLLAMA_MODEL_TEXT: str = "llama3.2:3b"
 
+    # Kong Gateway Admin URL
+    KONG_ADMIN_URL: str = "http://kong:8001"
+
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",

@@ -7,8 +7,20 @@ from typing import Literal, Optional
 from pydantic import BaseModel, Field
 
 
+class KongLiveTelemetry(BaseModel):
+    is_live: bool = Field(False, description="Whether live Kong Admin API connection is active")
+    server_version: Optional[str] = Field(None, description="Kong Gateway version")
+    connections_active: int = Field(0, ge=0, description="Nginx active connections")
+    connections_reading: int = Field(0, ge=0, description="Nginx reading connections")
+    connections_writing: int = Field(0, ge=0, description="Nginx writing connections")
+    connections_waiting: int = Field(0, ge=0, description="Nginx waiting connections")
+    total_requests: int = Field(0, ge=0, description="Total handled requests")
+    database_reachable: bool = Field(True, description="Kong database connection status")
+
+
 class GatewayMetricsResponse(BaseModel):
     status: Literal["ONLINE", "DEGRADED", "OFFLINE"] = "ONLINE"
+    telemetry_source: Literal["KONG_LIVE", "FALLBACK_RESILIENT"] = "FALLBACK_RESILIENT"
     total_rps: float = Field(..., ge=0, description="Requests per second")
     average_latency_ms: float = Field(..., ge=0, description="Average response latency in ms")
     success_rate_pct: float = Field(..., ge=0, le=100, description="Successful requests percentage")
@@ -16,6 +28,7 @@ class GatewayMetricsResponse(BaseModel):
     p99_latency_ms: float = Field(..., ge=0, description="99th percentile latency")
     active_connections: int = Field(..., ge=0, description="Current open connections")
     timestamp: datetime = Field(default_factory=datetime.utcnow)
+    kong_telemetry: Optional[KongLiveTelemetry] = None
 
 
 class ServiceModuleHealth(BaseModel):
