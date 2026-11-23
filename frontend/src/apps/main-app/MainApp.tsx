@@ -29,6 +29,8 @@ import { ResetPasswordPage } from "./pages/auth/ResetPasswordPage";
 import { CourseDetailPage } from "./pages/course/CourseDetailPage";
 import { CourseListPage } from "./pages/course/CourseListPage";
 import { StudentRosterPage } from "./pages/course/StudentRosterPage";
+import { AssignmentDetailPage } from "./pages/assessment/AssignmentDetailPage";
+import { VivaSandboxPage } from "./pages/assessment/VivaSandboxPage";
 
 const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const accessToken = useAuthStore((s) => s.accessToken);
@@ -84,6 +86,30 @@ export const MainApp: React.FC = () => {
           element={
             <ProtectedRoute>
               <StudentRosterPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/courses/:courseId/assignments/:assignmentId"
+          element={
+            <ProtectedRoute>
+              <AssignmentDetailPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/assignments/:assignmentId"
+          element={
+            <ProtectedRoute>
+              <AssignmentDetailPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/viva/:submissionId"
+          element={
+            <ProtectedRoute>
+              <VivaSandboxPage />
             </ProtectedRoute>
           }
         />

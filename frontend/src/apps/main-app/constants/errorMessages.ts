@@ -22,6 +22,11 @@ export const ERROR_MESSAGES: Record<string, string> = {
   "E-ROSTER-02": "Sinh viên này đã có trong danh sách lớp học.",
   "E-COURSE-FORBIDDEN": "Bạn không có quyền thực hiện thao tác này trong môn học.",
   "E-COURSE-NOT-FOUND": "Không tìm thấy dữ liệu môn học yêu cầu.",
+  "E-9": "Hành vi dán nội dung (Paste) bị vô hiệu hóa trong phòng thi Viva nhằm đảm bảo tính trung thực học thuật.",
+  "E-VIVA-01": "Cảnh báo chuyển cửa sổ/tab! Hệ thống đã ghi nhận vi phạm rời phòng thi vào nhật ký giám sát.",
+  "E-SUB-01": "Bài nộp đã quá hạn chót cho phép nộp trễ (Until Date).",
+  "E-SUB-02": "Mô tả giải trình sử dụng AI phải từ 20 ký tự trở lên.",
+  "E-VIVA-WORD-COUNT": "Câu trả lời vấn đáp phải đạt tối thiểu 50 từ trước khi gửi.",
   NETWORK_ERROR: "Không thể kết nối đến máy chủ. Vui lòng kiểm tra kết nối mạng và thử lại.",
   UNKNOWN_ERROR: "Đã xảy ra lỗi không xác định. Vui lòng thử lại sau.",
 };

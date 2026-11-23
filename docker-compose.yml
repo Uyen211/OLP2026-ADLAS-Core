@@ -132,6 +132,21 @@ services:
         limits:
           memory: 512M
 
+  # Tier 4: External Preprocessing Services - Repomix Container Service
+  repomix:
+    build:
+      context: ./infra/repomix-service
+    container_name: adlas-repomix
+    restart: unless-stopped
+    ports:
+      - "${REPOMIX_PORT:-3000}:3000"
+    networks:
+      - adlas-network
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+
   # Tier 2: React 18 Application Client (Nginx)
   frontend:
     build:

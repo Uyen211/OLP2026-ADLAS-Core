@@ -39,6 +39,13 @@ export function showToast(type: ToastType, message: string): void {
   useToastStore.getState().push(type, message);
 }
 
+export const toast = {
+  success: (message: string) => showToast("success", message),
+  error: (message: string) => showToast("error", message),
+  warning: (message: string) => showToast("warning", message),
+  info: (message: string) => showToast("info", message),
+};
+
 const STYLE_BY_TYPE: Record<ToastType, string> = {
   success: "border-mm-success/30 bg-mm-success-bg text-mm-success",
   error: "border-mm-danger/30 bg-mm-danger-bg text-mm-danger",
