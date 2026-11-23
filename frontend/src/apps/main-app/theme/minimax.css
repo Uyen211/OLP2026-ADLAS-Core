@@ -1,0 +1,121 @@
+/*
+ * Copyright (c) 2026 ADLAS Team - OLP 2026 Open Source Software Track
+ * SPDX-License-Identifier: MIT
+ */
+
+/* MiniMax Design System tokens scoped strictly to .mm-root so Admin Console styles stay untouched */
+.mm-root {
+  --mm-bg: #ffffff;
+  --mm-btn-secondary: #f0f0f0;
+  --mm-divider: #f2f3f5;
+  --mm-border: #e5e7eb;
+  --mm-success-bg: #e8ffea;
+  --mm-success: #15803d;
+  --mm-dark: #181e25;
+
+  --mm-blue-primary: #1456f0;
+  --mm-blue-sky: #3daeff;
+  --mm-blue-light: #bfdbfe;
+  --mm-blue-400: #60a5fa;
+  --mm-blue-500: #3b82f6;
+  --mm-blue-hover: #2563eb;
+  --mm-blue-active: #1d4ed8;
+  --mm-blue-deep: #17437d;
+
+  --mm-text: #222222;
+  --mm-heading: #18181b;
+  --mm-text-secondary: #45515e;
+  --mm-text-muted: #8e8e93;
+  --mm-text-helper: #5f5f5f;
+
+  --mm-danger: #d92d20;
+  --mm-danger-bg: #fef2f2;
+  --mm-warning-bg: #fff7e6;
+  --mm-warning: #b54708;
+
+  --mm-shadow-standard: 0 4px 6px rgba(0, 0, 0, 0.08);
+  --mm-shadow-ambient: 0 0 22.576px rgba(0, 0, 0, 0.08);
+  --mm-shadow-brand: 0 0 15px rgba(44, 30, 116, 0.16);
+  --mm-shadow-elevated: 0 12px 16px -4px rgba(36, 36, 36, 0.08);
+
+  background-color: var(--mm-bg);
+  color: var(--mm-text);
+  font-family: "DM Sans", -apple-system, BlinkMacSystemFont, sans-serif;
+  line-height: 1.5;
+  min-height: 100vh;
+}
+
+.mm-root .mm-logo-dot {
+  background-color: #ea5ec1;
+}
+
+.mm-root .mm-hero-title {
+  line-height: 1.1;
+}
+
+.mm-root .mm-caption {
+  line-height: 1.7;
+}
+
+/* TipTap rich text editor styling scoped inside .mm-root */
+.mm-root .mm-editor-content .ProseMirror {
+  min-height: 220px;
+  outline: none;
+  padding: 16px;
+  color: var(--mm-text);
+  font-family: "DM Sans", sans-serif;
+  font-size: 15px;
+  line-height: 1.6;
+}
+
+.mm-root .mm-editor-content .ProseMirror p {
+  margin-bottom: 0.65rem;
+}
+
+.mm-root .mm-editor-content .ProseMirror ul {
+  list-style-type: disc;
+  padding-left: 1.5rem;
+  margin-bottom: 0.75rem;
+}
+
+.mm-root .mm-editor-content .ProseMirror ol {
+  list-style-type: decimal;
+  padding-left: 1.5rem;
+  margin-bottom: 0.75rem;
+}
+
+.mm-root .mm-editor-content .ProseMirror h2 {
+  font-family: "Poppins", sans-serif;
+  font-size: 1.25rem;
+  font-weight: 500;
+  color: var(--mm-heading);
+  margin: 1rem 0 0.5rem;
+}
+
+.mm-root .mm-editor-content .ProseMirror h3 {
+  font-family: "Poppins", sans-serif;
+  font-size: 1.05rem;
+  font-weight: 500;
+  color: var(--mm-heading);
+  margin: 0.75rem 0 0.4rem;
+}
+
+.mm-root .mm-editor-content .ProseMirror table {
+  border-collapse: collapse;
+  width: 100%;
+  margin: 0.75rem 0;
+  table-layout: fixed;
+}
+
+.mm-root .mm-editor-content .ProseMirror th,
+.mm-root .mm-editor-content .ProseMirror td {
+  border: 1px solid var(--mm-border);
+  padding: 8px 10px;
+  vertical-align: top;
+}
+
+.mm-root .mm-editor-content .ProseMirror th {
+  background-color: var(--mm-divider);
+  font-weight: 500;
+  text-align: left;
+}
