@@ -1,0 +1,15 @@
+{
+  "name": "adlas-repomix-service",
+  "version": "1.0.0",
+  "description": "Repomix Ingestion Container Microservice for Code Packing",
+  "main": "server.mjs",
+  "type": "module",
+  "scripts": {
+    "start": "node server.mjs"
+  },
+  "dependencies": {
+    "express": "^4.19.2",
+    "repomix": "^0.2.22"
+  },
+  "license": "MIT"
+}

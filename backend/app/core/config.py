@@ -31,7 +31,7 @@ class Settings(BaseSettings):
     # AI Configuration (Dual-Mode)
     AI_PROVIDER: str = "gemini"  # "gemini" or "ollama"
     GEMINI_API_KEY: Optional[str] = None
-    GEMINI_MODEL: str = "gemini-1.5-flash"
+    GEMINI_MODEL: str = "gemini-3-flash-preview"
     OLLAMA_BASE_URL: str = "http://localhost:11434"
     OLLAMA_MODEL_CODE: str = "qwen2.5-coder:7b"
     OLLAMA_MODEL_TEXT: str = "llama3.2:3b"
@@ -39,8 +39,11 @@ class Settings(BaseSettings):
     # Kong Gateway Admin URL
     KONG_ADMIN_URL: str = "http://kong:8001"
 
+    # Repomix Ingestion Container Microservice URL
+    REPOMIX_SERVICE_URL: str = "http://localhost:3000"
+
     model_config = SettingsConfigDict(
-        env_file=".env",
+        env_file=[".env", "../.env", "repo-chinh/.env"],
         env_file_encoding="utf-8",
         extra="ignore"
     )

@@ -22,6 +22,10 @@ class CurrentUser:
     user: User
     token: str
 
+    @property
+    def id(self) -> uuid.UUID:
+        return self.user.id
+
 
 def get_bearer_token(authorization: Optional[str] = Header(None)) -> str:
     """Extract Bearer JWT token from Authorization header."""

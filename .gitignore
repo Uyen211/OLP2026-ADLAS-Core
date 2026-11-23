@@ -60,6 +60,8 @@ Thumbs.db
 data/
 minio-data/
 postgres-data/
+uploads/
+backend/uploads/
 *.mp4
 *.mov
 *.zip
