@@ -35,7 +35,7 @@ export const RosterImportModal: React.FC<RosterImportModalProps> = ({
 }) => {
   const [file, setFile] = useState<File | null>(null);
   const [preview, setPreview] = useState<RosterPreviewResponse | null>(null);
-  const [sendNotification, setSendNotification] = useState(false);
+  const [sendNotification, setSendNotification] = useState(true);
   const [loadingPreview, setLoadingPreview] = useState(false);
   const [confirming, setConfirming] = useState(false);
   const [downloadingTpl, setDownloadingTpl] = useState(false);
@@ -45,7 +45,7 @@ export const RosterImportModal: React.FC<RosterImportModalProps> = ({
   const reset = () => {
     setFile(null);
     setPreview(null);
-    setSendNotification(false);
+    setSendNotification(true);
     setErrorBanner(null);
     setMissingColumns([]);
   };
@@ -308,7 +308,7 @@ export const RosterImportModal: React.FC<RosterImportModalProps> = ({
                 className="h-4 w-4 rounded border-mm-border text-mm-blue-hover focus:ring-mm-blue-hover/30"
               />
               <span className="font-mm-ui text-sm text-mm-text-secondary">
-                Gửi thông báo mời tham gia lớp qua email cho các tài khoản sinh viên mới tạo
+                Tự động gửi email thông báo tài khoản cho sinh viên mới
               </span>
             </label>
           </div>

@@ -96,6 +96,8 @@ class LOResponse(BaseModel):
     course_id: uuid.UUID
     code: str
     description: str
+    detail_description: Optional[str] = None
+    weight_percent: Optional[float] = None
     bloom_level: BloomLevel
     order_index: int
     created_at: datetime
@@ -107,6 +109,8 @@ class LOCreate(BaseModel):
 
     code: str = Field(..., pattern=r"^[A-Za-z0-9-]{2,30}$")
     description: str = Field(..., min_length=10, max_length=150)
+    detail_description: Optional[str] = Field(None, max_length=1000)
+    weight_percent: Optional[float] = Field(None, ge=0, le=100)
     bloom_level: BloomLevel = BloomLevel.UNDERSTAND
 
     @field_validator("code")
@@ -120,6 +124,8 @@ class LOUpdate(BaseModel):
 
     code: Optional[str] = Field(None, pattern=r"^[A-Za-z0-9-]{2,30}$")
     description: Optional[str] = Field(None, min_length=10, max_length=150)
+    detail_description: Optional[str] = Field(None, max_length=1000)
+    weight_percent: Optional[float] = Field(None, ge=0, le=100)
     bloom_level: Optional[BloomLevel] = None
 
     @field_validator("code")

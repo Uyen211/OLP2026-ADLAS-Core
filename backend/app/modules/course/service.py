@@ -178,6 +178,8 @@ def _to_lo_response(lo: LearningObjective) -> LOResponse:
         course_id=lo.course_id,
         code=lo.code,
         description=lo.description,
+        detail_description=lo.detail_description,
+        weight_percent=float(lo.weight_percent) if lo.weight_percent is not None else None,
         bloom_level=BloomLevel(lo.bloom_level),
         order_index=lo.order_index,
         created_at=lo.created_at,
@@ -419,6 +421,8 @@ class CourseService:
                 course_id=cloned.id,
                 code=lo.code,
                 description=lo.description,
+                detail_description=lo.detail_description,
+                weight_percent=lo.weight_percent,
                 bloom_level=lo.bloom_level,
                 order_index=lo.order_index,
             )
@@ -502,6 +506,8 @@ class CourseService:
                     course_id=course.id,
                     code=t_lo.code,
                     description=t_lo.description,
+                    detail_description=t_lo.detail_description,
+                    weight_percent=t_lo.weight_percent,
                     bloom_level=t_lo.bloom_level,
                     order_index=next_order,
                 )
@@ -582,6 +588,12 @@ class LearningObjectiveService:
             course_id=course_id,
             code=payload.code,
             description=payload.description.strip(),
+            detail_description=(
+                payload.detail_description.strip()
+                if payload.detail_description and payload.detail_description.strip()
+                else None
+            ),
+            weight_percent=payload.weight_percent,
             bloom_level=payload.bloom_level.value,
             order_index=next_order,
         )
@@ -612,6 +624,11 @@ class LearningObjectiveService:
             lo.code = payload.code
         if payload.description is not None:
             lo.description = payload.description.strip()
+        if payload.detail_description is not None:
+            cleaned_detail = payload.detail_description.strip()
+            lo.detail_description = cleaned_detail or None
+        if payload.weight_percent is not None:
+            lo.weight_percent = payload.weight_percent
         if payload.bloom_level is not None:
             lo.bloom_level = payload.bloom_level.value
         lo.updated_at = datetime.now(timezone.utc)

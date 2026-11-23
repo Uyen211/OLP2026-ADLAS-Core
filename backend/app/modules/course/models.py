@@ -13,6 +13,7 @@ from sqlalchemy import (
     DateTime,
     ForeignKey,
     Integer,
+    Numeric,
     String,
     Text,
     UniqueConstraint,
@@ -64,6 +65,8 @@ class LearningObjective(Base):
     course_id = Column(UUID(as_uuid=True), ForeignKey("course.courses.id", ondelete="CASCADE"), nullable=False)
     code = Column(String(30), nullable=False)
     description = Column(Text, nullable=False)
+    detail_description = Column(Text, nullable=True)
+    weight_percent = Column(Numeric(5, 2), nullable=True)
     bloom_level = Column(String(30), nullable=False, default="UNDERSTAND")
     order_index = Column(Integer, nullable=False, default=1)
     created_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))

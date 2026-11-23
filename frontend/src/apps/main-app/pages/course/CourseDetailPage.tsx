@@ -381,7 +381,7 @@ export const CourseDetailPage: React.FC = () => {
               </div>
 
               <form onSubmit={handleSaveSyllabus} className="space-y-5">
-                <div className="grid grid-cols-1 gap-4 sm:grid-cols-4">
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-6">
                   <div className="sm:col-span-3">
                     <FormField label="Tên môn học" htmlFor="syllabus-name" required>
                       <input
@@ -391,6 +391,18 @@ export const CourseDetailPage: React.FC = () => {
                         value={name}
                         onChange={(e) => setName(e.target.value)}
                         className={mmInputClass(false)}
+                      />
+                    </FormField>
+                  </div>
+
+                  <div className="sm:col-span-2">
+                    <FormField label="Mã học phần" htmlFor="syllabus-course-code" required>
+                      <input
+                        id="syllabus-course-code"
+                        type="text"
+                        disabled
+                        value={course.course_code}
+                        className={`${mmInputClass(false)} bg-mm-divider/60 font-mm-mono text-mm-text-secondary`}
                       />
                     </FormField>
                   </div>
@@ -477,6 +489,7 @@ export const CourseDetailPage: React.FC = () => {
                         <th className="px-6 py-3">Mã LO</th>
                         <th className="px-6 py-3">Tên chuẩn đầu ra</th>
                         <th className="px-6 py-3">Mức Bloom</th>
+                        <th className="px-6 py-3">Trọng số (%)</th>
                         {canEdit && <th className="px-6 py-3 text-right">Thao tác</th>}
                       </tr>
                     </thead>
@@ -489,9 +502,21 @@ export const CourseDetailPage: React.FC = () => {
                           <td className="px-6 py-3.5 font-mm-mono text-xs font-medium text-mm-heading">
                             {lo.code}
                           </td>
-                          <td className="px-6 py-3.5 text-mm-heading">{lo.description}</td>
+                          <td className="px-6 py-3.5 text-mm-heading">
+                            <p>{lo.description}</p>
+                            {lo.detail_description && (
+                              <p className="mt-0.5 text-xs text-mm-text-helper">
+                                {lo.detail_description}
+                              </p>
+                            )}
+                          </td>
                           <td className="px-6 py-3.5">
                             <BloomBadge level={lo.bloom_level} />
+                          </td>
+                          <td className="px-6 py-3.5 font-mm-data text-xs text-mm-text-secondary">
+                            {lo.weight_percent !== null && lo.weight_percent !== undefined
+                              ? `${lo.weight_percent}%`
+                              : "—"}
                           </td>
                           {canEdit && (
                             <td className="px-6 py-3.5 text-right">

@@ -222,7 +222,7 @@ export const LoginPage: React.FC = () => {
               onChange={(e) => setRememberMe(e.target.checked)}
               className="h-4 w-4 rounded border-mm-border text-mm-blue-hover focus:ring-mm-blue-hover/30"
             />
-            <span>Ghi nhớ đăng nhập</span>
+            <span>Ghi nhớ đăng nhập trên thiết bị này trong 7 ngày</span>
           </label>
 
           <Link

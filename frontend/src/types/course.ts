@@ -34,6 +34,8 @@ export interface LOResponse {
   course_id: string;
   code: string;
   description: string;
+  detail_description?: string | null;
+  weight_percent?: number | null;
   bloom_level: BloomLevel;
   order_index: number;
   created_at: string;
@@ -43,12 +45,16 @@ export interface LOResponse {
 export interface LOCreate {
   code: string;
   description: string;
+  detail_description?: string | null;
+  weight_percent?: number | null;
   bloom_level: BloomLevel;
 }
 
 export interface LOUpdate {
   code?: string;
   description?: string;
+  detail_description?: string | null;
+  weight_percent?: number | null;
   bloom_level?: BloomLevel;
 }
 

@@ -401,16 +401,21 @@ export const StudentRosterPage: React.FC<StudentRosterPageProps> = ({
               <table className="w-full border-collapse text-left">
                 <thead>
                   <tr className="border-b border-mm-divider bg-mm-divider/40 font-mm-ui text-xs font-medium text-mm-text-secondary">
+                    <th className="px-6 py-3">STT</th>
                     <th className="px-6 py-3">MSSV</th>
                     <th className="px-6 py-3">Họ và tên</th>
                     <th className="px-6 py-3">Email</th>
-                    <th className="px-6 py-3">Nhóm</th>
+                    <th className="px-6 py-3">Nhóm đồ án</th>
+                    <th className="px-6 py-3">Trạng thái</th>
                     {!isReadOnly && <th className="px-6 py-3 text-right">Thao tác</th>}
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-mm-divider font-mm-ui text-sm">
-                  {rosterItems.map((student) => (
+                  {rosterItems.map((student, idx) => (
                     <tr key={student.user_id} className="hover:bg-mm-divider/20">
+                      <td className="px-6 py-3.5 font-mm-data text-xs text-mm-text-muted">
+                        {idx + 1}
+                      </td>
                       <td className="px-6 py-3.5 font-mm-mono text-xs text-mm-heading">
                         {student.user_code || "—"}
                       </td>
@@ -428,6 +433,23 @@ export const StudentRosterPage: React.FC<StudentRosterPageProps> = ({
                         ) : (
                           <span className="text-xs text-mm-text-muted">Chưa xếp nhóm</span>
                         )}
+                      </td>
+                      <td className="px-6 py-3.5">
+                        <span
+                          className={
+                            student.status === "ACTIVE"
+                              ? "inline-flex rounded-full bg-mm-success-bg px-2.5 py-0.5 text-xs font-medium text-mm-success"
+                              : student.status === "COMPLETED"
+                                ? "inline-flex rounded-full bg-mm-blue-light/50 px-2.5 py-0.5 text-xs font-medium text-mm-blue-deep"
+                                : "inline-flex rounded-full bg-mm-divider px-2.5 py-0.5 text-xs font-medium text-mm-text-muted"
+                          }
+                        >
+                          {student.status === "ACTIVE"
+                            ? "Đang học"
+                            : student.status === "COMPLETED"
+                              ? "Hoàn thành"
+                              : "Đã rời lớp"}
+                        </span>
                       </td>
                       {!isReadOnly && (
                         <td className="px-6 py-3.5 text-right">

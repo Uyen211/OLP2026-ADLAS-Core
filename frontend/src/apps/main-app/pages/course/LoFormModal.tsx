@@ -39,10 +39,13 @@ export const LoFormModal: React.FC<LoFormModalProps> = ({
 }) => {
   const [code, setCode] = useState("");
   const [description, setDescription] = useState("");
+  const [detailDescription, setDetailDescription] = useState("");
+  const [weightPercent, setWeightPercent] = useState("");
   const [bloomLevel, setBloomLevel] = useState<BloomLevel>("UNDERSTAND");
   const [loading, setLoading] = useState(false);
   const [codeError, setCodeError] = useState<string | null>(null);
   const [descError, setDescError] = useState<string | null>(null);
+  const [weightError, setWeightError] = useState<string | null>(null);
   const [bannerError, setBannerError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -50,14 +53,23 @@ export const LoFormModal: React.FC<LoFormModalProps> = ({
     if (editingLo) {
       setCode(editingLo.code);
       setDescription(editingLo.description);
+      setDetailDescription(editingLo.detail_description ?? "");
+      setWeightPercent(
+        editingLo.weight_percent !== null && editingLo.weight_percent !== undefined
+          ? String(editingLo.weight_percent)
+          : ""
+      );
       setBloomLevel(editingLo.bloom_level);
     } else {
       setCode("");
       setDescription("");
+      setDetailDescription("");
+      setWeightPercent("");
       setBloomLevel("UNDERSTAND");
     }
     setCodeError(null);
     setDescError(null);
+    setWeightError(null);
     setBannerError(null);
   }, [open, editingLo]);
 
@@ -65,6 +77,7 @@ export const LoFormModal: React.FC<LoFormModalProps> = ({
     event.preventDefault();
     const cleanedCode = code.trim().toUpperCase();
     const cleanedDesc = description.trim();
+    const cleanedDetail = detailDescription.trim();
 
     let hasErr = false;
     if (!/^[A-Za-z0-9-]{2,30}$/.test(cleanedCode)) {
@@ -81,6 +94,20 @@ export const LoFormModal: React.FC<LoFormModalProps> = ({
       setDescError(null);
     }
 
+    let parsedWeight: number | null = null;
+    if (weightPercent.trim() !== "") {
+      const numeric = Number(weightPercent);
+      if (Number.isNaN(numeric) || numeric < 0 || numeric > 100) {
+        setWeightError("Trọng số đóng góp phải nằm trong khoảng 0 đến 100%.");
+        hasErr = true;
+      } else {
+        parsedWeight = numeric;
+        setWeightError(null);
+      }
+    } else {
+      setWeightError(null);
+    }
+
     if (hasErr) return;
 
     setBannerError(null);
@@ -91,11 +118,15 @@ export const LoFormModal: React.FC<LoFormModalProps> = ({
         ? await courseService.updateLearningObjective(courseId, editingLo.id, {
             code: cleanedCode,
             description: cleanedDesc,
+            detail_description: cleanedDetail || null,
+            weight_percent: parsedWeight,
             bloom_level: bloomLevel,
           })
         : await courseService.createLearningObjective(courseId, {
             code: cleanedCode,
             description: cleanedDesc,
+            detail_description: cleanedDetail || null,
+            weight_percent: parsedWeight,
             bloom_level: bloomLevel,
           });
       showToast(
@@ -190,19 +221,59 @@ export const LoFormModal: React.FC<LoFormModalProps> = ({
           />
         </FormField>
 
-        <FormField label="Mức độ nhận thức Bloom" htmlFor="lo-bloom" required>
-          <select
-            id="lo-bloom"
-            value={bloomLevel}
-            onChange={(e) => setBloomLevel(e.target.value as BloomLevel)}
-            className={mmInputClass(false)}
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <FormField label="Mức độ nhận thức Bloom" htmlFor="lo-bloom" required>
+            <select
+              id="lo-bloom"
+              value={bloomLevel}
+              onChange={(e) => setBloomLevel(e.target.value as BloomLevel)}
+              className={mmInputClass(false)}
+            >
+              {BLOOM_OPTIONS.map((opt) => (
+                <option key={opt.value} value={opt.value}>
+                  {opt.label}
+                </option>
+              ))}
+            </select>
+          </FormField>
+
+          <FormField
+            label="Trọng số đóng góp (%)"
+            htmlFor="lo-weight"
+            error={weightError}
+            helper="Tùy chọn, từ 0 đến 100%"
           >
-            {BLOOM_OPTIONS.map((opt) => (
-              <option key={opt.value} value={opt.value}>
-                {opt.label}
-              </option>
-            ))}
-          </select>
+            <input
+              id="lo-weight"
+              type="number"
+              min={0}
+              max={100}
+              step="0.5"
+              value={weightPercent}
+              onChange={(e) => {
+                setWeightPercent(e.target.value);
+                if (weightError) setWeightError(null);
+              }}
+              placeholder="vd: 25"
+              className={mmInputClass(Boolean(weightError))}
+            />
+          </FormField>
+        </div>
+
+        <FormField
+          label="Mô tả chi tiết (tùy chọn)"
+          htmlFor="lo-detail-description"
+          helper="Nhập yêu cầu cụ thể đối với sinh viên khi đánh giá chuẩn đầu ra này"
+        >
+          <textarea
+            id="lo-detail-description"
+            rows={2}
+            maxLength={1000}
+            value={detailDescription}
+            onChange={(e) => setDetailDescription(e.target.value)}
+            placeholder="vd: Sinh viên triển khai được API có xác thực JWT và kiểm thử tự động đạt 80% coverage"
+            className={mmInputClass(false)}
+          />
         </FormField>
       </form>
     </MmModal>
