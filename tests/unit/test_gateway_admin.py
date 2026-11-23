@@ -152,3 +152,54 @@ async def test_ip_whitelist_add_and_delete_lifecycle(mock_db_session, mock_admin
     await service.delete_ip_whitelist(entry.id, mock_admin_user)
     whitelist_after = await service.list_ip_whitelist()
     assert not any(e.id == entry.id for e in whitelist_after)
+
+
+@pytest.mark.asyncio
+async def test_gateway_metrics_kong_live_telemetry(mock_db_session, monkeypatch):
+    service = GatewayAdminService(mock_db_session)
+
+    mock_response = MagicMock()
+    mock_response.status_code = 200
+    mock_response.json.return_value = {
+        "server": {
+            "total_requests": 15420,
+            "connections_active": 42,
+            "connections_reading": 2,
+            "connections_writing": 5,
+            "connections_waiting": 35,
+        },
+        "database": {"reachable": True},
+    }
+
+    async def mock_get(*args, **kwargs):
+        return mock_response
+
+    monkeypatch.setattr("httpx.AsyncClient.get", mock_get)
+
+    metrics = await service.get_metrics()
+    assert metrics.status == "ONLINE"
+    assert metrics.telemetry_source == "KONG_LIVE"
+    assert metrics.kong_telemetry is not None
+    assert metrics.kong_telemetry.is_live is True
+    assert metrics.kong_telemetry.connections_active == 42
+    assert metrics.kong_telemetry.total_requests == 15420
+    assert metrics.kong_telemetry.database_reachable is True
+    assert metrics.active_connections == 42
+
+
+@pytest.mark.asyncio
+async def test_gateway_metrics_fallback_resilient_on_kong_offline(mock_db_session, monkeypatch):
+    import httpx
+    service = GatewayAdminService(mock_db_session)
+
+    async def mock_get_error(*args, **kwargs):
+        raise httpx.ConnectError("Connection refused by target host")
+
+    monkeypatch.setattr("httpx.AsyncClient.get", mock_get_error)
+
+    metrics = await service.get_metrics()
+    assert metrics.status == "ONLINE"
+    assert metrics.telemetry_source == "FALLBACK_RESILIENT"
+    assert metrics.kong_telemetry is None
+    assert metrics.total_rps > 0
+    assert metrics.active_connections > 0

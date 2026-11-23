@@ -207,23 +207,33 @@ export const GatewayMonitoring: React.FC = () => {
           <div className="flex items-center justify-between">
             <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Trạng Thái Cổng Gateway</span>
             <span className="flex h-2.5 w-2.5 relative">
-              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
-              <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500" />
+              <span className={`animate-ping absolute inline-flex h-full w-full rounded-full ${metrics?.telemetry_source === "KONG_LIVE" ? "bg-emerald-400" : "bg-amber-400"} opacity-75`} />
+              <span className={`relative inline-flex rounded-full h-2.5 w-2.5 ${metrics?.telemetry_source === "KONG_LIVE" ? "bg-emerald-500" : "bg-amber-500"}`} />
             </span>
           </div>
           <div className="mt-3 flex items-baseline gap-2">
             <span className="text-2xl font-bold text-slate-900 tracking-tight">
               {metrics?.status || "ONLINE"}
             </span>
-            <span className="text-xs text-emerald-600 font-medium">Optimal</span>
+            <span className={`text-[11px] font-semibold px-2 py-0.5 rounded-full border ${
+              metrics?.telemetry_source === "KONG_LIVE"
+                ? "text-emerald-700 bg-emerald-50 border-emerald-200"
+                : "text-amber-700 bg-amber-50 border-amber-200"
+            }`}>
+              {metrics?.telemetry_source === "KONG_LIVE" ? "Kong Live" : "Resilient Fallback"}
+            </span>
           </div>
-          <p className="text-[11px] text-slate-400 mt-1">Kong Declarative In-Memory Proxy</p>
+          <p className="text-[11px] text-slate-400 mt-1">
+            {metrics?.kong_telemetry?.is_live
+              ? `Kong Port 8001 trực tiếp (${metrics.kong_telemetry.total_requests} reqs)`
+              : "Kong Declarative In-Memory Proxy"}
+          </p>
         </div>
 
         {/* Card 2: Current Traffic RPS */}
         <div className="p-5 bg-white rounded-2xl border border-slate-200 shadow-card">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Current Traffic</span>
+            <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Lưu Lượng Yêu Cầu</span>
             <Zap className="w-4 h-4 text-blue-500" />
           </div>
           <div className="mt-3 flex items-baseline gap-2">
@@ -232,7 +242,9 @@ export const GatewayMonitoring: React.FC = () => {
             </span>
           </div>
           <p className="text-[11px] text-slate-400 mt-1">
-            {metrics?.active_connections || 1840} active edge connections
+            {metrics?.kong_telemetry?.is_live
+              ? `${metrics.kong_telemetry.connections_active} active (R:${metrics.kong_telemetry.connections_reading} W:${metrics.kong_telemetry.connections_writing})`
+              : `${metrics?.active_connections || 1840} active edge connections`}
           </p>
         </div>
 
