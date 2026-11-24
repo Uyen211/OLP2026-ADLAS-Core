@@ -126,8 +126,8 @@ Your goal is to evaluate the student's actual understanding and the core substan
 """
 
     async def _call_gemini_json(self, prompt: str, expected_count: int) -> Optional[List[Dict[str, Any]]]:
-        """Call Gemini API directly with thinkingBudget=0, retry with exponential backoff on 503/429."""
-        candidate_models = [self.gemini_model, "gemini-3-flash-preview", "gemini-3.1-flash-lite-preview"]
+        """Call Gemini API directly with thinkingBudget=0, fast retry on 503/429."""
+        candidate_models = [self.gemini_model, "gemini-2.5-flash", "gemini-2.0-flash"]
         models_to_try = list(dict.fromkeys([m for m in candidate_models if m]))
 
         payload = {
@@ -139,9 +139,9 @@ Your goal is to evaluate the student's actual understanding and the core substan
             }
         }
 
-        async with httpx.AsyncClient(timeout=35.0) as client:
+        async with httpx.AsyncClient(timeout=12.0) as client:
             for model_name in models_to_try:
-                for attempt in range(3):
+                for attempt in range(2):
                     url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={self.gemini_key}"
                     try:
                         resp = await client.post(url, json=payload)
@@ -164,10 +164,10 @@ Your goal is to evaluate the student's actual understanding and the core substan
                                 return normalized
                         elif resp.status_code in (503, 429):
                             logger.warning(
-                                "Gemini model %s returned %d (attempt %d/3), backing off...",
+                                "Gemini model %s returned %d (attempt %d/2), backing off...",
                                 model_name, resp.status_code, attempt + 1
                             )
-                            await asyncio.sleep(1.5 * (attempt + 1))
+                            await asyncio.sleep(0.8 * (attempt + 1))
                             continue
                         else:
                             logger.warning("Gemini model %s returned status %d", model_name, resp.status_code)

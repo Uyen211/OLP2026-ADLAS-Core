@@ -9,6 +9,8 @@ import uuid
 import pytest
 from pydantic import ValidationError
 from app.modules.assessment.exceptions import (
+    IntegrityPledgeRequiredException,
+    InvalidSubmissionPayloadException,
     SubmissionCutoffExceededException,
 )
 from app.modules.assessment.models import Assignment, Rubric
@@ -206,3 +208,50 @@ async def test_submission_freezes_rubric_on_first_submission():
     )
 
     assert mock_rubric.is_frozen is True
+
+
+@pytest.mark.asyncio
+async def test_submission_rejects_unsigned_pledge_and_bad_extension():
+    service = AssessmentSubmissionService()
+    now = datetime.now(timezone.utc)
+    mock_assignment = Assignment(
+        id=uuid.uuid4(),
+        course_id=uuid.uuid4(),
+        title="Project Assignment",
+        instructions="Build project",
+        submission_type="FILE_UPLOAD",
+        allowed_extensions=".zip,.pdf",
+        due_date=now + timedelta(days=2),
+        until_date=now + timedelta(days=5),
+        late_penalty_percent=5.0,
+        is_viva_required=False
+    )
+
+    db = AsyncMock()
+    mock_res = MagicMock()
+    mock_res.scalar_one_or_none.return_value = mock_assignment
+    db.execute.return_value = mock_res
+
+    unsigned_payload = SubmissionCreateRequest(
+        file_url="/app/uploads/submissions/code.zip",
+        is_pledge_signed=False,
+        ai_disclosure=AIDisclosureSchema(
+            self_contribution_pct=90,
+            tools_used=[],
+            usage_description="Implemented core module independently and verified tests."
+        )
+    )
+    with pytest.raises(IntegrityPledgeRequiredException):
+        await service.create_submission(db=db, assignment_id=mock_assignment.id, user_id=uuid.uuid4(), payload=unsigned_payload)
+
+    bad_ext_payload = SubmissionCreateRequest(
+        file_url="/app/uploads/submissions/malware.exe",
+        is_pledge_signed=True,
+        ai_disclosure=AIDisclosureSchema(
+            self_contribution_pct=90,
+            tools_used=[],
+            usage_description="Implemented core module independently and verified tests."
+        )
+    )
+    with pytest.raises(InvalidSubmissionPayloadException):
+        await service.create_submission(db=db, assignment_id=mock_assignment.id, user_id=uuid.uuid4(), payload=bad_ext_payload)

@@ -67,3 +67,12 @@ def test_extract_text_from_txt_file():
     finally:
         if os.path.exists(temp_path):
             os.remove(temp_path)
+
+
+def test_recursive_map_reduce_empty_text_has_word_counts():
+    summarizer = DocumentSummarizer()
+    res = summarizer.recursive_map_reduce("   ")
+    assert res["total_chunks"] == 0
+    assert res["original_word_count"] == 0
+    assert res["digest_word_count"] == 0
+    assert "executive_summary" in res
