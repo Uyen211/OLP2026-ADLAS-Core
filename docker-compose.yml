@@ -121,6 +121,10 @@ services:
     restart: unless-stopped
     env_file:
       - .env
+    environment:
+      REPOMIX_SERVICE_URL: "http://repomix:3000"
+    volumes:
+      - uploads_data:/app/uploads
     ports:
       - "${BACKEND_PORT:-8080}:8080"
     networks:
@@ -138,6 +142,8 @@ services:
       context: ./infra/repomix-service
     container_name: adlas-repomix
     restart: unless-stopped
+    volumes:
+      - uploads_data:/app/uploads
     ports:
       - "${REPOMIX_PORT:-3000}:3000"
     networks:
@@ -172,3 +178,4 @@ networks:
 volumes:
   postgres_data:
   minio_data:
+  uploads_data:
