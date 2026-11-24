@@ -149,7 +149,8 @@ class DocumentSummarizer:
             return {
                 "executive_summary": "Tài liệu không có nội dung văn bản đáng kể.",
                 "total_chunks": 0,
-                "word_count": 0
+                "original_word_count": 0,
+                "digest_word_count": 0,
             }
 
         # Map Phase: Summarize each chunk

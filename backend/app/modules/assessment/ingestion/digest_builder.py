@@ -3,10 +3,20 @@
 
 """Universal Submission Digest Builder uniting Code (Repomix) and Text (Summarizer)."""
 
+import logging
 import os
+import shutil
+import tarfile
+import tempfile
 from typing import Any, Dict, Optional
+import uuid
+import zipfile
 from app.modules.assessment.ingestion.document_summarizer import DocumentSummarizer
 from app.modules.assessment.ingestion.repomix_client import RepomixClient
+
+logger = logging.getLogger(__name__)
+SHARED_EXTRACT_ROOT = "/app/uploads/tmp_extract"
+MAX_UNCOMPRESSED_BYTES = 100 * 1024 * 1024  # 100MB safety limit
 
 
 class UniversalSubmissionDigest:
@@ -56,9 +66,17 @@ class UniversalDigestBuilder:
         if file_path and os.path.exists(file_path):
             ext = os.path.splitext(file_path)[1].lower()
 
-            # Zip Archive (Source code)
-            if ext in {".zip", ".tar", ".gz"}:
-                pack_res = await self.repomix_client.pack_source_code(source_path=file_path, max_tokens=1800)
+            # Zip / Tar Archive (Source code) -> extract to shared directory for Repomix
+            if ext in {".zip", ".tar", ".gz", ".tgz"}:
+                extract_dir = self._safe_extract_archive(file_path, ext)
+                try:
+                    pack_res = await self.repomix_client.pack_source_code(
+                        source_path=extract_dir,
+                        max_tokens=1800
+                    )
+                finally:
+                    if extract_dir and os.path.exists(extract_dir):
+                        shutil.rmtree(extract_dir, ignore_errors=True)
                 return UniversalSubmissionDigest(
                     digest_type="CODE",
                     content=pack_res.get("packed_xml", ""),
@@ -91,3 +109,52 @@ class UniversalDigestBuilder:
             content=f"Tài liệu nộp: {doc_label}. Sinh viên tham gia phản biện trực tiếp dựa trên nội dung đề tài và sản phẩm đã nộp.",
             metadata={"source": "empty_fallback", "file_name": doc_label}
         )
+
+    def _safe_extract_archive(self, archive_path: str, ext: str) -> str:
+        """Extract .zip or .tar(.gz) archive safely into a temporary directory on shared storage."""
+        try:
+            os.makedirs(SHARED_EXTRACT_ROOT, exist_ok=True)
+            extract_dir = os.path.join(SHARED_EXTRACT_ROOT, str(uuid.uuid4()))
+            os.makedirs(extract_dir, exist_ok=True)
+        except OSError:
+            extract_dir = tempfile.mkdtemp(prefix="adlas-extract-")
+
+        real_root = os.path.realpath(extract_dir)
+        total_bytes = 0
+
+        try:
+            if ext == ".zip" and zipfile.is_zipfile(archive_path):
+                with zipfile.ZipFile(archive_path, "r") as zf:
+                    for info in zf.infolist():
+                        if info.is_dir():
+                            continue
+                        total_bytes += info.file_size
+                        if total_bytes > MAX_UNCOMPRESSED_BYTES:
+                            logger.warning("Archive %s exceeds uncompressed size limit.", archive_path)
+                            break
+                        target = os.path.realpath(os.path.join(extract_dir, info.filename))
+                        if not target.startswith(real_root + os.sep):
+                            continue
+                        os.makedirs(os.path.dirname(target), exist_ok=True)
+                        with zf.open(info) as src, open(target, "wb") as dst:
+                            shutil.copyfileobj(src, dst)
+            elif tarfile.is_tarfile(archive_path):
+                with tarfile.open(archive_path, "r:*") as tf:
+                    for member in tf.getmembers():
+                        if not member.isfile():
+                            continue
+                        total_bytes += member.size
+                        if total_bytes > MAX_UNCOMPRESSED_BYTES:
+                            break
+                        target = os.path.realpath(os.path.join(extract_dir, member.name))
+                        if not target.startswith(real_root + os.sep):
+                            continue
+                        os.makedirs(os.path.dirname(target), exist_ok=True)
+                        src = tf.extractfile(member)
+                        if src:
+                            with src, open(target, "wb") as dst:
+                                shutil.copyfileobj(src, dst)
+        except Exception as exc:
+            logger.warning("Failed to extract archive %s: %s", archive_path, exc)
+
+        return extract_dir

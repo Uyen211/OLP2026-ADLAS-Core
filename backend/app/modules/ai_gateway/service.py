@@ -158,9 +158,10 @@ Your goal is to evaluate the student's actual understanding and the core substan
                             if raw_text.endswith("```"):
                                 raw_text = raw_text[:-3]
                             parsed = json.loads(raw_text.strip())
-                            if isinstance(parsed, list) and len(parsed) >= expected_count:
+                            normalized = self._normalize_questions(parsed, expected_count)
+                            if normalized:
                                 logger.info("Successfully generated Viva questions using %s", model_name)
-                                return parsed[:expected_count]
+                                return normalized
                         elif resp.status_code in (503, 429):
                             logger.warning(
                                 "Gemini model %s returned %d (attempt %d/3), backing off...",
@@ -192,9 +193,31 @@ Your goal is to evaluate the student's actual understanding and the core substan
             if resp.status_code == 200:
                 raw_text = resp.json().get("response", "")
                 parsed = json.loads(raw_text)
-                if isinstance(parsed, list) and len(parsed) == expected_count:
-                    return parsed
+                normalized = self._normalize_questions(parsed, expected_count)
+                if normalized:
+                    return normalized
         return None
+
+    @staticmethod
+    def _normalize_questions(raw: Any, expected_count: int) -> Optional[List[Dict[str, Any]]]:
+        """Validate and normalize LLM JSON output to guarantee VivaQuestionSchema compliance."""
+        if not isinstance(raw, list) or len(raw) < expected_count:
+            return None
+        normalized: List[Dict[str, Any]] = []
+        for idx, item in enumerate(raw[:expected_count]):
+            if not isinstance(item, dict):
+                return None
+            text = str(item.get("question_text") or item.get("question") or "").strip()
+            if not text:
+                return None
+            normalized.append({
+                "id": str(item.get("id") or f"q{idx + 1}"),
+                "question_index": idx + 1,
+                "total_questions": expected_count,
+                "question_text": text,
+                "category": str(item.get("category") or "DEFENSE"),
+            })
+        return normalized
 
     def _generate_deterministic_questions(
         self,
