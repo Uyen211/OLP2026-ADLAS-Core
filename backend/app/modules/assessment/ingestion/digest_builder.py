@@ -90,15 +90,17 @@ class UniversalDigestBuilder:
             # Document (PDF, DOCX, TXT)
             elif ext in {".pdf", ".docx", ".txt", ".md"}:
                 text = self.summarizer.extract_text_from_file(file_path)
-                summary_res = self.summarizer.recursive_map_reduce(text)
+                doc_label = file_name or os.path.basename(file_path)
+                summary_res = await self.summarizer.summarize_with_llm_or_fallback(text, doc_label=doc_label)
                 return UniversalSubmissionDigest(
                     digest_type="DOCUMENT",
                     content=summary_res["executive_summary"],
                     metadata={
                         "source": "document_report",
-                        "file_name": file_name or os.path.basename(file_path),
+                        "file_name": doc_label,
                         "original_word_count": summary_res["original_word_count"],
-                        "digest_word_count": summary_res["digest_word_count"]
+                        "digest_word_count": summary_res["digest_word_count"],
+                        "summarizer_mode": summary_res.get("summarizer_mode", "extractive"),
                     }
                 )
 
