@@ -39,7 +39,21 @@ export interface Submission {
   submitted_at: string;
   is_late: boolean;
   late_penalty_applied: number;
-  status: "DRAFT" | "SUBMITTED" | "GRADING" | "GRADED" | string;
+  status: "PENDING_VIVA" | "IN_VIVA" | "VIVA_COMPLETED" | "SUBMITTED" | "GRADED" | string;
+}
+
+export interface AssignmentSummaryItem {
+  id: string;
+  course_id: string;
+  title: string;
+  due_date: string;
+  until_date?: string | null;
+  late_penalty_percent: number;
+  is_viva_required: boolean;
+  viva_question_count: number;
+  ai_policy_level: "GREEN" | "YELLOW" | "RED" | string;
+  submission_count: number;
+  latest_status?: string | null;
 }
 
 export interface AssignmentDetail {
@@ -56,6 +70,7 @@ export interface AssignmentDetail {
   late_penalty_percent: number;
   is_viva_required: boolean;
   viva_question_count: number;
+  ai_policy_level: "GREEN" | "YELLOW" | "RED" | string;
   submissions: Submission[];
 }
 
@@ -78,10 +93,17 @@ export interface VivaStartResponse {
   submission_id: string;
   total_questions: number;
   total_duration_seconds: number;
+  remaining_seconds: number;
   current_question_index: number;
   question: VivaQuestion;
   status: string;
   violation_logs?: VivaViolationLog[];
+}
+
+export interface VivaTimeoutRequest {
+  question_id?: string;
+  answer_text?: string;
+  time_spent_seconds?: number;
 }
 
 export interface VivaAnswerSubmitRequest {

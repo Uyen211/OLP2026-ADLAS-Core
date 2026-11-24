@@ -50,13 +50,16 @@ export const VivaSandboxPage: React.FC = () => {
   const [briefingAccepted, setBriefingAccepted] = useState<boolean>(false);
   const [shakeInput, setShakeInput] = useState<boolean>(false);
   const [windowBlurWarning, setWindowBlurWarning] = useState<boolean>(false);
+  const [lastBlurTimestamp, setLastBlurTimestamp] = useState<string>("");
+  const [preparingSession, setPreparingSession] = useState<boolean>(false);
   const [showViolationsModal, setShowViolationsModal] = useState<boolean>(false);
   const [violationLogs, setViolationLogs] = useState<VivaViolationLog[]>([]);
 
   // Timer State
-  const [remainingSeconds, setRemainingSeconds] = useState<number>(1500); // 25 mins default
+  const [remainingSeconds, setRemainingSeconds] = useState<number>(900);
   const timerRef = useRef<number | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+  const handleTimeExpireRef = useRef<() => void>(() => {});
 
   // Word count calculation
   const wordCount = useMemo(() => {
@@ -70,19 +73,33 @@ export const VivaSandboxPage: React.FC = () => {
     if (!submissionId) return;
     try {
       setLoading(true);
+      setPreparingSession(false);
       const data = await assessmentService.startVivaSession(submissionId);
       setSessionData(data);
       setCurrentQuestion(data.question);
-      setRemainingSeconds(data.total_duration_seconds || 1500);
+      setRemainingSeconds(
+        typeof data.remaining_seconds === "number"
+          ? data.remaining_seconds
+          : data.total_duration_seconds || 900
+      );
       setQuestionStartTime(Date.now());
       if (data.violation_logs) {
         setViolationLogs(data.violation_logs);
       }
-      if (data.status === "COMPLETED") {
+      if (data.status === "COMPLETED" || data.status === "TIMEOUT") {
         setIsCompleted(true);
         setShowBriefingModal(false);
       }
     } catch (err: any) {
+      if (err?.code === "E-VIVA-03" || err?.code === "E-VIVA-04") {
+        setIsCompleted(true);
+        setShowBriefingModal(false);
+        return;
+      }
+      if (err?.code === "E-VIVA-PREPARING") {
+        setPreparingSession(true);
+        return;
+      }
       toast.error(resolveErrorMessage(err?.code, "Không thể khởi tạo phiên vấn đáp Viva."));
     } finally {
       setLoading(false);
@@ -90,18 +107,50 @@ export const VivaSandboxPage: React.FC = () => {
   }, [submissionId]);
 
   useEffect(() => {
-    initSession();
+    void initSession();
   }, [initSession]);
 
-  // Overall Countdown Timer
   useEffect(() => {
-    if (!briefingAccepted || isCompleted || remainingSeconds <= 0) return;
+    if (!preparingSession) return;
+    const retryTimer = window.setTimeout(() => {
+      void initSession();
+    }, 2500);
+    return () => window.clearTimeout(retryTimer);
+  }, [preparingSession, initSession]);
+
+  // Handle Timeout
+  const handleTimeExpire = useCallback(async () => {
+    if (!submissionId) return;
+    toast.error("Hết giờ làm bài vấn đáp! Hệ thống đang tự động niêm phong phiên thi...");
+    try {
+      const timeSpent = Math.max(0, Math.floor((Date.now() - questionStartTime) / 1000));
+      await assessmentService.timeoutVivaSession(submissionId, {
+        question_id: currentQuestion?.id,
+        answer_text: answerText.trim() || undefined,
+        time_spent_seconds: timeSpent,
+      });
+    } catch {
+      // Even if network fails, seal UI state
+    } finally {
+      setIsCompleted(true);
+    }
+  }, [submissionId, currentQuestion, answerText, questionStartTime]);
+
+  useEffect(() => {
+    handleTimeExpireRef.current = () => {
+      void handleTimeExpire();
+    };
+  }, [handleTimeExpire]);
+
+  // Overall Countdown Timer (created once when briefing is accepted)
+  useEffect(() => {
+    if (!briefingAccepted || isCompleted) return;
 
     timerRef.current = window.setInterval(() => {
       setRemainingSeconds((prev) => {
         if (prev <= 1) {
           if (timerRef.current) clearInterval(timerRef.current);
-          handleTimeExpire();
+          handleTimeExpireRef.current();
           return 0;
         }
         return prev - 1;
@@ -111,13 +160,7 @@ export const VivaSandboxPage: React.FC = () => {
     return () => {
       if (timerRef.current) clearInterval(timerRef.current);
     };
-  }, [briefingAccepted, isCompleted, remainingSeconds]);
-
-  // Handle Timeout
-  const handleTimeExpire = () => {
-    toast.error("Hết giờ làm bài vấn đáp! Hệ thống đang tự động niêm phong phiên thi...");
-    setIsCompleted(true);
-  };
+  }, [briefingAccepted, isCompleted]);
 
   // Window Blur Violation Trap (E-VIVA-01)
   useEffect(() => {
@@ -131,13 +174,16 @@ export const VivaSandboxPage: React.FC = () => {
         details: { reason: "Mất tiêu điểm cửa sổ / Chuyển tab hoặc ứng dụng" },
       };
       setViolationLogs((prev) => [newLog, ...prev]);
+      setLastBlurTimestamp(new Date().toLocaleTimeString("vi-VN"));
       setWindowBlurWarning(true);
 
       if (submissionId) {
-        assessmentService.recordSecurityViolation(submissionId, {
-          violation_type: "WINDOW_BLUR",
-          details: { timestamp: nowIso },
-        });
+        assessmentService
+          .recordSecurityViolation(submissionId, {
+            violation_type: "WINDOW_BLUR",
+            details: { timestamp: nowIso },
+          })
+          .catch(() => {});
       }
     };
 
@@ -162,10 +208,12 @@ export const VivaSandboxPage: React.FC = () => {
     toast.error(resolveErrorMessage("E-9"));
 
     if (submissionId) {
-      assessmentService.recordSecurityViolation(submissionId, {
-        violation_type: "PASTE_ATTEMPT",
-        details: { timestamp: nowIso },
-      });
+      assessmentService
+        .recordSecurityViolation(submissionId, {
+          violation_type: "PASTE_ATTEMPT",
+          details: { timestamp: nowIso },
+        })
+        .catch(() => {});
     }
 
     setTimeout(() => {
@@ -225,13 +273,15 @@ export const VivaSandboxPage: React.FC = () => {
     return `${String(mins).padStart(2, "0")}:${String(secs).padStart(2, "0")}`;
   }, [remainingSeconds]);
 
-  if (loading) {
+  if (loading || preparingSession) {
     return (
       <div className="flex min-h-[70vh] items-center justify-center">
         <div className="flex flex-col items-center gap-3">
           <div className="h-8 w-8 animate-spin rounded-full border-3 border-mm-blue-primary border-t-transparent" />
           <span className="font-mm-ui text-sm text-[#6b7280]">
-            Đang khởi tạo phòng thi Viva Sandbox an toàn...
+            {preparingSession
+              ? "AI đang hoàn tất phân tích bài nộp để sinh câu hỏi vấn đáp..."
+              : "Đang khởi tạo phòng thi Viva Sandbox an toàn..."}
           </span>
         </div>
       </div>
@@ -353,7 +403,7 @@ export const VivaSandboxPage: React.FC = () => {
             <div>
               <dt className="text-[#6b7280]">Số câu hỏi đã hoàn tất:</dt>
               <dd className="mt-0.5 font-mono font-bold text-[#059669]">
-                {sessionData?.total_questions || 5} / {sessionData?.total_questions || 5} câu
+                {sessionData?.total_questions || 3} / {sessionData?.total_questions || 3} câu
               </dd>
             </div>
             <div>
@@ -386,7 +436,8 @@ export const VivaSandboxPage: React.FC = () => {
   }
 
   const currentIdx = currentQuestion?.question_index || 1;
-  const totalQuestions = sessionData?.total_questions || 5;
+  const totalQuestions = sessionData?.total_questions || 3;
+  const totalDurationMinutes = Math.round((sessionData?.total_duration_seconds || totalQuestions * 300) / 60);
   const progressPercent = Math.round((currentIdx / totalQuestions) * 100);
 
   return (
@@ -474,7 +525,7 @@ export const VivaSandboxPage: React.FC = () => {
               <div>
                 <p className="font-bold text-xs">Cảnh báo: Rời cửa sổ làm bài đã được ghi lại!</p>
                 <p className="mt-0.5 text-[11px] text-amber-800 leading-relaxed">
-                  Hệ thống vừa ghi nhận sự kiện chuyển tab/ứng dụng lúc {new Date().toLocaleTimeString("vi-VN")}. Bạn có thể bấm nút &quot;Chi tiết vi phạm&quot; ở góc trên để xem toàn bộ lịch sử.
+                  Hệ thống vừa ghi nhận sự kiện chuyển tab/ứng dụng{lastBlurTimestamp ? ` lúc ${lastBlurTimestamp}` : ""}. Bạn có thể bấm nút &quot;Chi tiết vi phạm&quot; ở góc trên để xem toàn bộ lịch sử.
                 </p>
               </div>
             </div>
@@ -497,7 +548,7 @@ export const VivaSandboxPage: React.FC = () => {
                 <span>Câu hỏi phản biện #{currentIdx}</span>
               </span>
               <span className="text-[11px] text-[#9ca3af] font-mm-mono">
-                Tổng thời lượng: 25 phút
+                Tổng thời lượng: {totalDurationMinutes} phút
               </span>
             </div>
 

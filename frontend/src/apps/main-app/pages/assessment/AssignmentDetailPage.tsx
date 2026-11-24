@@ -25,6 +25,7 @@ import { clsx } from "clsx";
 import { assessmentService } from "../../../../services/assessmentService";
 import type { AssignmentDetail, Submission } from "../../../../types/assessment";
 import { MmButton } from "../../components/MmButton";
+import { MmModal } from "../../components/MmModal";
 import { MarkdownRenderer } from "../../components/MarkdownRenderer";
 import { PillTabs } from "../../components/PillTabs";
 import { toast } from "../../components/Toast";
@@ -59,6 +60,7 @@ export const AssignmentDetailPage: React.FC = () => {
   const [selectedAiTools, setSelectedAiTools] = useState<string[]>([]);
   const [aiUsageDescription, setAiUsageDescription] = useState<string>("");
   const [isPledgeSigned, setIsPledgeSigned] = useState<boolean>(false);
+  const [showResubmitConfirm, setShowResubmitConfirm] = useState<boolean>(false);
 
   // Validation Errors
   const [formErrors, setFormErrors] = useState<Record<string, string>>({});
@@ -160,41 +162,19 @@ export const AssignmentDetailPage: React.FC = () => {
     return Object.keys(errors).length === 0;
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const executeSubmit = async () => {
     if (!assignment || !assignmentId) return;
-
-    if (!validateForm()) {
-      toast.error("Vui lòng hoàn thiện các trường dữ liệu theo quy định.");
-      return;
-    }
-
-    if (deadlineStatus?.isPastCutoff) {
-      toast.error(resolveErrorMessage("E-SUB-01"));
-      return;
-    }
-
     try {
       setSubmitting(true);
+      setShowResubmitConfirm(false);
 
       let fileUrl = "";
       let fileName = "";
 
       if (submissionTab === "file" && selectedFile) {
-        fileName = selectedFile.name;
-        try {
-          const uploadRes = await assessmentService.uploadFile(selectedFile);
-          fileUrl = uploadRes.file_url;
-          fileName = uploadRes.file_name || selectedFile.name;
-        } catch (uploadErr) {
-          console.error("Direct upload failed, attempting fallback:", uploadErr);
-          const presigned = await assessmentService.getPresignedUploadUrl({
-            file_name: selectedFile.name,
-            content_type: selectedFile.type || "application/octet-stream",
-            file_size_bytes: selectedFile.size,
-          });
-          fileUrl = presigned.file_url;
-        }
+        const uploadRes = await assessmentService.uploadFile(selectedFile);
+        fileUrl = uploadRes.file_url;
+        fileName = uploadRes.file_name || selectedFile.name;
       }
 
       const payload = {
@@ -228,6 +208,28 @@ export const AssignmentDetailPage: React.FC = () => {
     } finally {
       setSubmitting(false);
     }
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!assignment || !assignmentId) return;
+
+    if (!validateForm()) {
+      toast.error("Vui lòng hoàn thiện các trường dữ liệu theo quy định.");
+      return;
+    }
+
+    if (deadlineStatus?.isPastCutoff) {
+      toast.error(resolveErrorMessage("E-SUB-01"));
+      return;
+    }
+
+    if (assignment.submissions && assignment.submissions.length > 0) {
+      setShowResubmitConfirm(true);
+      return;
+    }
+
+    await executeSubmit();
   };
 
   if (loading) {
@@ -288,12 +290,27 @@ export const AssignmentDetailPage: React.FC = () => {
           {assignment.is_viva_required && (
             <span className="inline-flex items-center gap-1.5 rounded-full border border-[#dbeafe] bg-[#eff6ff] px-3 py-1 text-xs font-medium text-[#1e40af]">
               <Sparkles className="h-3.5 w-3.5 text-mm-blue-primary" />
-              <span>Vấn đáp Viva ({assignment.viva_question_count || 5} câu)</span>
+              <span>Vấn đáp Viva ({assignment.viva_question_count || 3} câu)</span>
             </span>
           )}
-          <span className="inline-flex items-center gap-1.5 rounded-full border border-[#e5e7eb] bg-[#f9fafb] px-3 py-1 text-xs font-medium text-[#374151]">
-            <Bot className="h-3.5 w-3.5 text-[#4b5563]" />
-            <span>Khai báo sử dụng AI</span>
+          <span
+            className={clsx(
+              "inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-medium",
+              assignment.ai_policy_level === "GREEN"
+                ? "border-[#a7f3d0] bg-[#ecfdf5] text-[#047857]"
+                : assignment.ai_policy_level === "RED"
+                ? "border-rose-200 bg-rose-50 text-rose-700"
+                : "border-amber-200 bg-amber-50 text-amber-800"
+            )}
+          >
+            <Bot className="h-3.5 w-3.5" />
+            <span>
+              {assignment.ai_policy_level === "GREEN"
+                ? "Chính sách AI: Xanh (Tự do kèm khai báo)"
+                : assignment.ai_policy_level === "RED"
+                ? "Chính sách AI: Đỏ (Cấm sử dụng AI)"
+                : "Chính sách AI: Vàng (Có điều kiện & khai báo)"}
+            </span>
           </span>
         </div>
       </div>
@@ -668,7 +685,7 @@ export const AssignmentDetailPage: React.FC = () => {
                 Bảo Vệ Đồ Án Viva Sandbox
               </h3>
               <p className="mt-1 text-xs text-[#6b7280] leading-relaxed">
-                Hệ thống AI sẽ đặt {assignment.viva_question_count || 5} câu hỏi phản biện trực tiếp dựa trên đề tài và bài nộp cụ thể của bạn để xác thực năng lực thực chất.
+                Hệ thống AI sẽ đặt {assignment.viva_question_count || 3} câu hỏi phản biện trực tiếp dựa trên đề tài và bài nộp cụ thể của bạn để xác thực năng lực thực chất.
               </p>
 
               {latestSubmission ? (
@@ -683,16 +700,23 @@ export const AssignmentDetailPage: React.FC = () => {
                     </p>
                   </div>
 
-                  <MmButton
-                    variant="brand"
-                    size="md"
-                    fullWidth
-                    onClick={() => navigate(`/viva/${latestSubmission.id}`)}
-                    className="rounded-full shadow-sm"
-                  >
-                    <span>Vào Phòng Vấn Đáp Viva</span>
-                    <ArrowRight className="h-4 w-4 ml-1.5" />
-                  </MmButton>
+                  {latestSubmission.status === "VIVA_COMPLETED" || latestSubmission.status === "GRADED" ? (
+                    <div className="flex items-center justify-center gap-2 rounded-full border border-[#a7f3d0] bg-[#ecfdf5] px-4 py-2.5 text-xs font-semibold text-[#047857]">
+                      <CheckCircle2 className="h-4 w-4" />
+                      <span>Đã hoàn tất vấn đáp Viva (v{latestSubmission.version})</span>
+                    </div>
+                  ) : (
+                    <MmButton
+                      variant="brand"
+                      size="md"
+                      fullWidth
+                      onClick={() => navigate(`/viva/${latestSubmission.id}`)}
+                      className="rounded-full shadow-sm"
+                    >
+                      <span>Vào Phòng Vấn Đáp Viva</span>
+                      <ArrowRight className="h-4 w-4 ml-1.5" />
+                    </MmButton>
+                  )}
                 </div>
               ) : (
                 <div className="mt-4 rounded-xl bg-gray-50 p-3 text-center text-xs text-[#6b7280]">
@@ -816,6 +840,28 @@ export const AssignmentDetailPage: React.FC = () => {
           </div>
         </div>
       </div>
+
+      {/* Confirmation Modal for Resubmission (Subflow A-1) */}
+      <MmModal
+        open={showResubmitConfirm}
+        onClose={() => setShowResubmitConfirm(false)}
+        title="Xác nhận nộp phiên bản bài làm mới"
+        maxWidthClass="max-w-md"
+      >
+        <div className="space-y-4 text-xs font-mm-ui text-mm-dark">
+          <p className="leading-relaxed text-[#4b5563]">
+            Bạn đang nộp phiên bản mới (<span className="font-semibold text-mm-dark">v{(assignment.submissions?.length || 0) + 1}</span>). Phiên bản trước đó vẫn được lưu trữ nguyên vẹn trong lịch sử để Giảng viên đối soát và sẽ tạo phiên vấn đáp Viva mới cho bản nộp này. Bạn có chắc chắn muốn tiếp tục?
+          </p>
+          <div className="flex justify-end gap-3 border-t border-[#f3f4f6] pt-3">
+            <MmButton variant="ghost" onClick={() => setShowResubmitConfirm(false)}>
+              Hủy bỏ
+            </MmButton>
+            <MmButton variant="brand" loading={submitting} onClick={() => void executeSubmit()}>
+              Xác nhận nộp lại
+            </MmButton>
+          </div>
+        </div>
+      </MmModal>
     </div>
   );
 };

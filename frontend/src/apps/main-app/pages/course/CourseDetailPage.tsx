@@ -14,6 +14,7 @@ import {
   CheckCircle2,
   Copy,
   Edit3,
+  FileCheck2,
   Lock,
   Plus,
   Save,
@@ -23,10 +24,12 @@ import {
   Users,
 } from "lucide-react";
 import { RichTextEditor } from "../../../../components/editors/RichTextEditor";
+import { assessmentService } from "../../../../services/assessmentService";
 import { courseService } from "../../../../services/courseService";
 import { ApiError } from "../../../../services/httpClient";
 import { useAuthStore } from "../../../../stores/authStore";
 import { useCourseContextStore } from "../../../../stores/courseContextStore";
+import type { AssignmentSummaryItem } from "../../../../types/assessment";
 import type { CourseDetail, CourseStatus, LOResponse } from "../../../../types/course";
 import { BloomBadge } from "../../components/BloomBadge";
 import { ConfirmModal } from "../../components/ConfirmModal";
@@ -42,7 +45,7 @@ import { CloneTemplateModal } from "./CloneTemplateModal";
 import { LoFormModal } from "./LoFormModal";
 import { StudentRosterPage } from "./StudentRosterPage";
 
-type DetailTab = "syllabus" | "los" | "roster";
+type DetailTab = "syllabus" | "los" | "assignments" | "roster";
 
 const STATUS_BADGE: Record<CourseStatus, { label: string; className: string }> = {
   UNPUBLISHED: {
@@ -69,6 +72,7 @@ export const CourseDetailPage: React.FC = () => {
   const setActiveCourse = useCourseContextStore((s) => s.setActiveCourse);
 
   const [course, setCourse] = useState<CourseDetail | null>(null);
+  const [assignments, setAssignments] = useState<AssignmentSummaryItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<DetailTab>("syllabus");
 
@@ -103,6 +107,10 @@ export const CourseDetailPage: React.FC = () => {
         role: detail.my_role ?? null,
         courseName: detail.name,
       });
+      assessmentService
+        .listCourseAssignments(courseId)
+        .then((items) => setAssignments(items))
+        .catch(() => setAssignments([]));
     } catch (err) {
       showToast(
         "error",
@@ -226,6 +234,12 @@ export const CourseDetailPage: React.FC = () => {
       label: "Chuẩn đầu ra",
       count: course?.learning_objectives.length ?? 0,
       icon: <Target className="h-4 w-4" />,
+    },
+    {
+      value: "assignments",
+      label: "Bài tập & Đồ án",
+      count: assignments.length,
+      icon: <FileCheck2 className="h-4 w-4" />,
     },
     {
       value: "roster",
@@ -568,6 +582,56 @@ export const CourseDetailPage: React.FC = () => {
                       ))}
                     </tbody>
                   </table>
+                </div>
+              )}
+            </MmCard>
+          )}
+
+          {activeTab === "assignments" && (
+            <MmCard variant="standard" className="space-y-4">
+              <div className="flex items-center justify-between border-b border-mm-divider pb-3">
+                <div>
+                  <h2 className="font-mm-display text-lg font-semibold text-mm-heading">
+                    Danh sách Bài tập & Đồ án
+                  </h2>
+                  <p className="font-mm-ui text-xs text-mm-text-muted">
+                    Truy cập nhiệm vụ học tập, nộp sản phẩm, khai báo AI và tham gia vấn đáp Viva Sandbox
+                  </p>
+                </div>
+              </div>
+              {assignments.length === 0 ? (
+                <p className="py-8 text-center font-mm-ui text-sm text-mm-text-muted">
+                  Chưa có bài tập nào được giao trong môn học này.
+                </p>
+              ) : (
+                <div className="grid gap-3">
+                  {assignments.map((item) => (
+                    <Link
+                      key={item.id}
+                      to={`/courses/${course.id}/assignments/${item.id}`}
+                      className="flex flex-col justify-between gap-3 rounded-mm-card border border-mm-divider bg-white p-4 transition-colors hover:border-mm-primary sm:flex-row sm:items-center"
+                    >
+                      <div className="space-y-1">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="font-mm-display text-base font-semibold text-mm-heading">
+                            {item.title}
+                          </span>
+                          {item.is_viva_required && (
+                            <span className="rounded-full bg-[#eff6ff] px-2.5 py-0.5 font-mm-ui text-xs font-medium text-[#1e40af]">
+                              Viva ({item.viva_question_count} câu)
+                            </span>
+                          )}
+                        </div>
+                        <p className="font-mm-data text-xs text-mm-text-secondary">
+                          Hạn nộp: {new Date(item.due_date).toLocaleString("vi-VN")} · Đã nộp: {item.submission_count} phiên bản
+                          {item.latest_status ? ` · Trạng thái: ${item.latest_status}` : ""}
+                        </p>
+                      </div>
+                      <MmButton variant="secondary" size="sm">
+                        <span>Mở bài tập</span>
+                      </MmButton>
+                    </Link>
+                  ))}
                 </div>
               )}
             </MmCard>
