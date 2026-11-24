@@ -45,6 +45,7 @@ class Assignment(Base):
     late_penalty_percent = Column(Numeric(4, 2), nullable=False, default=5.0)
     is_viva_required = Column(Boolean, nullable=False, default=True)
     viva_question_count = Column(Integer, nullable=False, default=3)
+    ai_policy_level = Column(String(20), nullable=False, default="YELLOW")
     created_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
 
     submissions = relationship("AssignmentSubmission", back_populates="assignment", cascade="all, delete-orphan")

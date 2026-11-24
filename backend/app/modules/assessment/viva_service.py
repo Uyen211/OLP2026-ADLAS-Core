@@ -4,14 +4,17 @@
 """Viva Sandbox engine managing isolated sessions, countdown timers, and integrity audit trails."""
 
 from datetime import datetime, timezone
+from typing import Optional
 import uuid
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 from app.modules.assessment.exceptions import (
     VivaAnswerWordCountException,
+    VivaQuestionMismatchException,
     VivaSessionCompletedException,
     VivaSessionNotFoundException,
+    VivaSessionPreparingException,
     VivaTimeoutException,
 )
 from app.modules.assessment.models import VivaTranscript
@@ -20,6 +23,7 @@ from app.modules.assessment.schemas import (
     VivaAnswerSubmitResponse,
     VivaQuestionSchema,
     VivaStartResponse,
+    VivaTimeoutRequest,
 )
 
 
@@ -49,6 +53,9 @@ class VivaSandboxService:
         if transcript.status in {"COMPLETED", "TIMEOUT"}:
             raise VivaSessionCompletedException()
 
+        if transcript.status == "PREPARING":
+            raise VivaSessionPreparingException()
+
         now = datetime.now(timezone.utc)
         qa_data = dict(transcript.questions_answers)
         total_questions = qa_data.get("total_questions", 3)
@@ -69,6 +76,7 @@ class VivaSandboxService:
             await db.commit()
             raise VivaTimeoutException()
 
+        remaining_seconds = max(0, int(total_duration_seconds - elapsed))
         curr_idx = qa_data.get("current_index", 1)
         questions = qa_data.get("questions", [])
         active_q_raw = questions[curr_idx - 1] if curr_idx <= len(questions) else questions[0]
@@ -79,6 +87,7 @@ class VivaSandboxService:
             submission_id=submission_id,
             total_questions=total_questions,
             total_duration_seconds=total_duration_seconds,
+            remaining_seconds=remaining_seconds,
             current_question_index=curr_idx,
             question=active_question,
             status=transcript.status,
@@ -120,6 +129,14 @@ class VivaSandboxService:
             await db.commit()
             raise VivaTimeoutException()
 
+        # Enforce sequential question matching
+        curr_idx = qa_data.get("current_index", 1)
+        questions = qa_data.get("questions", [])
+        if questions and curr_idx <= len(questions):
+            expected_q_id = questions[curr_idx - 1].get("id")
+            if expected_q_id and payload.question_id != expected_q_id:
+                raise VivaQuestionMismatchException()
+
         # Enforce Minimum 50 words (BR-VIVA / E-1)
         words = payload.answer_text.strip().split()
         if len(words) < 50:
@@ -134,7 +151,6 @@ class VivaSandboxService:
         }
         qa_data["answers"] = answers
 
-        curr_idx = qa_data.get("current_index", 1)
         if curr_idx < total_questions:
             qa_data["current_index"] = curr_idx + 1
             transcript.questions_answers = qa_data
@@ -195,3 +211,56 @@ class VivaSandboxService:
         transcript.violation_logs = logs
         await db.commit()
         return True
+
+    async def timeout_session(
+        self,
+        db: AsyncSession,
+        submission_id: uuid.UUID,
+        user_id: uuid.UUID,
+        payload: Optional[VivaTimeoutRequest] = None
+    ) -> VivaAnswerSubmitResponse:
+        """Finalize and seal a Viva session upon countdown expiration (Subflow A-1)."""
+        stmt = (
+            select(VivaTranscript)
+            .where(VivaTranscript.submission_id == submission_id)
+            .options(selectinload(VivaTranscript.submission))
+        )
+        res = await db.execute(stmt)
+        transcript = res.scalar_one_or_none()
+        if not transcript or transcript.submission.user_id != user_id:
+            raise VivaSessionNotFoundException(str(submission_id))
+
+        if transcript.status in {"COMPLETED", "TIMEOUT"}:
+            return VivaAnswerSubmitResponse(
+                session_id=transcript.id,
+                is_completed=True,
+                next_question=None,
+                status=transcript.status,
+                message="Viva defense session has already been sealed."
+            )
+
+        now = datetime.now(timezone.utc)
+        qa_data = dict(transcript.questions_answers)
+        if payload and payload.question_id and payload.answer_text and payload.answer_text.strip():
+            answers = dict(qa_data.get("answers", {}))
+            answers[payload.question_id] = {
+                "answer_text": payload.answer_text.strip(),
+                "time_spent_seconds": payload.time_spent_seconds,
+                "submitted_at": now.isoformat(),
+                "auto_saved_on_timeout": True,
+            }
+            qa_data["answers"] = answers
+            transcript.questions_answers = qa_data
+
+        transcript.status = "TIMEOUT"
+        transcript.completed_at = now
+        transcript.submission.status = "VIVA_COMPLETED"
+        await db.commit()
+
+        return VivaAnswerSubmitResponse(
+            session_id=transcript.id,
+            is_completed=True,
+            next_question=None,
+            status="TIMEOUT",
+            message="Viva time limit expired. Partial answers have been automatically sealed."
+        )

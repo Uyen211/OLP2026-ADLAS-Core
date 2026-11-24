@@ -4,13 +4,15 @@
 """REST API router for Assignments, Submissions, AI Disclosure, and Viva Sandbox."""
 
 import os
-import shutil
+from typing import List
 import uuid
-from fastapi import APIRouter, Depends, File, UploadFile, status
+from fastapi import APIRouter, BackgroundTasks, Depends, File, UploadFile, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.database import get_db
+from app.modules.assessment.exceptions import InvalidSubmissionPayloadException
 from app.modules.assessment.schemas import (
     AssignmentDetailResponse,
+    AssignmentSummaryItem,
     PresignedUploadUrlRequest,
     SubmissionCreateRequest,
     SubmissionResponse,
@@ -18,6 +20,7 @@ from app.modules.assessment.schemas import (
     VivaAnswerSubmitResponse,
     VivaSecurityViolationRequest,
     VivaStartResponse,
+    VivaTimeoutRequest,
 )
 from app.modules.assessment.service import AssessmentSubmissionService
 from app.modules.assessment.viva_service import VivaSandboxService
@@ -26,6 +29,20 @@ from app.modules.identity.dependencies import CurrentUser, get_current_user
 router = APIRouter(prefix="/api/v1/assessments", tags=["Assessment & Viva Sandbox"])
 submission_service = AssessmentSubmissionService()
 viva_service = VivaSandboxService()
+
+
+@router.get("/courses/{course_id}/assignments", response_model=List[AssignmentSummaryItem])
+async def list_course_assignments(
+    course_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: CurrentUser = Depends(get_current_user)
+):
+    """List assignments within a course along with student submission summary."""
+    return await submission_service.list_course_assignments(
+        db=db,
+        course_id=course_id,
+        user_id=current_user.user.id
+    )
 
 
 @router.get("/assignments/{assignment_id}", response_model=AssignmentDetailResponse)
@@ -50,6 +67,7 @@ async def get_assignment_detail(
 async def create_submission(
     assignment_id: uuid.UUID,
     payload: SubmissionCreateRequest,
+    background_tasks: BackgroundTasks,
     db: AsyncSession = Depends(get_db),
     current_user: CurrentUser = Depends(get_current_user)
 ):
@@ -58,7 +76,8 @@ async def create_submission(
         db=db,
         assignment_id=assignment_id,
         user_id=current_user.user.id,
-        payload=payload
+        payload=payload,
+        background_tasks=background_tasks
     )
 
 
@@ -98,6 +117,25 @@ async def submit_viva_answer(
     )
 
 
+@router.post(
+    "/submissions/{submission_id}/viva/timeout",
+    response_model=VivaAnswerSubmitResponse
+)
+async def timeout_viva_session(
+    submission_id: uuid.UUID,
+    payload: VivaTimeoutRequest = VivaTimeoutRequest(),
+    db: AsyncSession = Depends(get_db),
+    current_user: CurrentUser = Depends(get_current_user)
+):
+    """Automatically seal Viva session and save partial answer upon countdown timeout."""
+    return await viva_service.timeout_session(
+        db=db,
+        submission_id=submission_id,
+        user_id=current_user.user.id,
+        payload=payload
+    )
+
+
 @router.post("/submissions/{submission_id}/viva/violations", status_code=status.HTTP_200_OK)
 async def record_security_violation(
     submission_id: uuid.UUID,
@@ -118,6 +156,8 @@ async def record_security_violation(
 
 UPLOAD_DIR = "/app/uploads/submissions"
 os.makedirs(UPLOAD_DIR, exist_ok=True)
+ALLOWED_UPLOAD_EXTS = {".zip", ".tar", ".gz", ".tgz", ".pdf", ".docx", ".txt", ".md"}
+MAX_UPLOAD_BYTES = 50 * 1024 * 1024
 
 
 @router.post("/upload")
@@ -125,14 +165,27 @@ async def upload_submission_file(
     file: UploadFile = File(...),
     current_user: CurrentUser = Depends(get_current_user)
 ):
-    """Directly save submission file (PDF, DOCX, ZIP) to server disk for ingestion."""
-    safe_name = f"{uuid.uuid4()}-{file.filename}"
+    """Directly save submission file (PDF, DOCX, ZIP) to shared volume for ingestion."""
+    filename = os.path.basename(file.filename or "submission")
+    ext = os.path.splitext(filename)[1].lower()
+    if ext not in ALLOWED_UPLOAD_EXTS:
+        raise InvalidSubmissionPayloadException(f"Unsupported upload file format: {ext}")
+
+    safe_name = f"{uuid.uuid4()}-{filename}"
     local_path = os.path.join(UPLOAD_DIR, safe_name)
+    total_written = 0
     with open(local_path, "wb") as buffer:
-        shutil.copyfileobj(file.file, buffer)
+        while chunk := await file.read(1024 * 1024):
+            total_written += len(chunk)
+            if total_written > MAX_UPLOAD_BYTES:
+                buffer.close()
+                if os.path.exists(local_path):
+                    os.remove(local_path)
+                raise InvalidSubmissionPayloadException("Uploaded file exceeds maximum 50MB limit.")
+            buffer.write(chunk)
     return {
         "file_url": local_path,
-        "file_name": file.filename,
+        "file_name": filename,
     }
 
 

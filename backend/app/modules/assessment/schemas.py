@@ -85,9 +85,26 @@ class AssignmentDetailResponse(BaseModel):
     late_penalty_percent: float
     is_viva_required: bool
     viva_question_count: int
+    ai_policy_level: str = "YELLOW"
     submissions: List[SubmissionResponse] = Field(default_factory=list)
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class AssignmentSummaryItem(BaseModel):
+    """Summary item for listing assignments within a course."""
+
+    id: uuid.UUID
+    course_id: uuid.UUID
+    title: str
+    due_date: datetime
+    until_date: Optional[datetime] = None
+    late_penalty_percent: float
+    is_viva_required: bool
+    viva_question_count: int
+    ai_policy_level: str = "YELLOW"
+    submission_count: int = 0
+    latest_status: Optional[str] = None
 
 
 class VivaQuestionSchema(BaseModel):
@@ -107,10 +124,19 @@ class VivaStartResponse(BaseModel):
     submission_id: uuid.UUID
     total_questions: int
     total_duration_seconds: int
+    remaining_seconds: int
     current_question_index: int
     question: VivaQuestionSchema
     status: str
     violation_logs: List[Dict[str, Any]] = Field(default_factory=list)
+
+
+class VivaTimeoutRequest(BaseModel):
+    """Optional partial answer payload sent when Viva countdown expires."""
+
+    question_id: Optional[str] = None
+    answer_text: Optional[str] = None
+    time_spent_seconds: Optional[int] = Field(None, ge=0)
 
 
 class VivaAnswerSubmitRequest(BaseModel):
