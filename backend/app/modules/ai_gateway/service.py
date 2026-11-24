@@ -110,10 +110,11 @@ Your goal is to evaluate the student's actual understanding and the core substan
 {digest_content[:4000]}
 
 === INSTRUCTIONS ===
-1. Formulate probing questions directly on the core substance, key decisions, methodologies, and findings presented in the student's submitted work ('{proj_str}') and the provided digest.
-2. Inquire into their declared AI assistance: ask how they verified, tested, or understood parts where AI was used versus parts they developed themselves.
-3. Output language: Each question ('question_text') must be written in clear, natural, academic Vietnamese (Tiếng Việt).
-4. Output format: Return strictly a valid JSON array of {question_count} objects without markdown code fences or additional commentary:
+1. Every question MUST cite specific entities from SUBMISSION CONTENT DIGEST (e.g., exact file names, module/function names, algorithms, datasets, metrics, or architectural choices).
+2. Generic questions that could apply to any arbitrary project without reading the digest are STRICTLY FORBIDDEN.
+3. Include at least one question probing their declared AI usage ({self_pct}% self-work, tools: {tools}) in relation to a specific part of their submitted work.
+4. Output language: Each question ('question_text') must be written in clear, natural, academic Vietnamese.
+5. Output format: Return strictly a valid JSON array of {question_count} objects without markdown code fences or additional commentary:
 [
   {{
     "id": "q1",
@@ -127,7 +128,7 @@ Your goal is to evaluate the student's actual understanding and the core substan
 
     async def _call_gemini_json(self, prompt: str, expected_count: int) -> Optional[List[Dict[str, Any]]]:
         """Call Gemini API directly with thinkingBudget=0, fast retry on 503/429."""
-        candidate_models = [self.gemini_model, "gemini-2.5-flash", "gemini-2.0-flash"]
+        candidate_models = [self.gemini_model, "gemini-3.5-flash", "gemini-3.1-flash-lite", "gemini-flash-latest"]
         models_to_try = list(dict.fromkeys([m for m in candidate_models if m]))
 
         payload = {
@@ -229,34 +230,63 @@ Your goal is to evaluate the student's actual understanding and the core substan
         ai_disclosure: Dict[str, Any],
         question_count: int
     ) -> List[Dict[str, Any]]:
-        """Generate tailored questions grounded in the student project title, methodology, and AI disclosure."""
+        """Generate content-grounded fallback questions extracting real anchors from the submission digest."""
+        import re
+
         self_pct = ai_disclosure.get("self_contribution_pct", 100)
         tools = ", ".join(ai_disclosure.get("tools_used", [])) or "công cụ hỗ trợ"
         ai_desc = ai_disclosure.get("usage_description", "").strip()
         proj_str = project_title.strip() if project_title else assignment_title
 
-        candidates = [
-            (
-                "CORE_METHODOLOGY",
-                f"Trong đề tài '{proj_str}', hãy giải thích phương pháp cốt lõi hoặc giải pháp kỹ thuật then chốt mà bạn đã lựa chọn để giải quyết bài toán đặt ra, và lý do bạn lựa chọn giải pháp này?"
-            ),
-            (
-                "VALIDATION_EVALUATION",
-                f"Để đánh giá hiệu quả thực tế của đề tài '{proj_str}', bạn đã dựa vào bộ dữ liệu, chỉ số hoặc phương pháp kiểm chứng cụ thể nào? Kết quả đạt được phản ánh những ưu điểm và hạn chế gì?"
-            ),
-            (
-                "AI_MASTERY",
-                f"Bạn khai báo tự làm {self_pct}% và có sử dụng {tools} ({ai_desc[:80] if ai_desc else 'hỗ trợ'}). Bạn đã kiểm chứng phần kết quả hoặc mã nguồn do AI gợi ý như thế nào để đảm bảo tính chuẩn xác và tin cậy?"
-            ),
-            (
-                "TRADE_OFFS_LIMITATIONS",
-                f"Đâu là khó khăn kỹ thuật hoặc hạn chế lớn nhất mà bạn gặp phải khi thực hiện đề tài '{proj_str}', và bạn đã cân nhắc đánh đổi (trade-offs) những yếu tố nào trong thiết kế của mình?"
-            ),
-            (
-                "PRACTICAL_EXPANSION",
-                f"Nếu cần nâng cấp hoặc triển khai đề tài '{proj_str}' vào môi trường thực tế với quy mô dữ liệu lớn hơn, đâu là những điểm nghẽn bạn dự kiến sẽ gặp và hướng khắc phục tiếp theo?"
-            ),
-        ]
+        # Extract concrete anchors from digest_content (files for CODE, key terms/lines for DOCUMENT)
+        file_refs = re.findall(r"[\w./-]+\.(?:py|ts|tsx|js|mjs|sql|java|cpp|go)", digest_content or "")
+        unique_files = list(dict.fromkeys(file_refs))[:3]
+        file_hint = ", ".join(unique_files) if unique_files else "các mô-đun chính trong bài nộp"
+
+        doc_lines = [ln.lstrip("- ").strip() for ln in (digest_content or "").splitlines() if len(ln.strip()) > 30]
+        anchor_1 = doc_lines[0][:140] if len(doc_lines) > 0 else ""
+        anchor_2 = doc_lines[min(2, len(doc_lines) - 1)][:140] if len(doc_lines) > 1 else ""
+
+        if digest_type == "CODE":
+            candidates = [
+                (
+                    "ARCHITECTURE_CODE",
+                    f"Trong mã nguồn của đề tài '{proj_str}' (cụ thể tại {file_hint}), hãy giải thích luồng xử lý chính và lý do bạn tổ chức cấu trúc các thành phần như vậy?"
+                ),
+                (
+                    "EDGE_CASE_TESTING",
+                    f"Khi triển khai xử lý dữ liệu và ngoại lệ trong {file_hint}, bạn đã kiểm thử những tình huống biên (edge cases) nào để đảm bảo hệ thống không gặp lỗi?"
+                ),
+                (
+                    "AI_MASTERY",
+                    f"Bạn khai báo tự làm {self_pct}% và có sử dụng {tools} ({ai_desc[:80] if ai_desc else 'hỗ trợ'}). Bạn đã rà soát và kiểm chứng tính đúng đắn của phần mã nguồn do AI gợi ý như thế nào?"
+                ),
+                (
+                    "TRADE_OFFS_LIMITATIONS",
+                    f"Đâu là điểm nghẽn hoặc đánh đổi kỹ thuật (trade-offs) lớn nhất trong thiết kế hiện tại của '{proj_str}' và hướng cải tiến tiếp theo?"
+                ),
+            ]
+        else:
+            a1_part = f' (trích: "{anchor_1}...")' if anchor_1 else ""
+            a2_part = f' (liên quan: "{anchor_2}...")' if anchor_2 else ""
+            candidates = [
+                (
+                    "CORE_METHODOLOGY",
+                    f"Dựa trên nội dung báo cáo '{proj_str}'{a1_part}, hãy giải thích cơ sở phương pháp luận bạn đã lựa chọn và ưu thế so với các hướng tiếp cận khác?"
+                ),
+                (
+                    "VALIDATION_EVALUATION",
+                    f"Trong phần thực nghiệm của đề tài '{proj_str}'{a2_part}, bạn đã sử dụng bộ dữ liệu và chỉ số đánh giá nào để chứng minh hiệu quả?"
+                ),
+                (
+                    "AI_MASTERY",
+                    f"Bạn khai báo tự làm {self_pct}% và có sử dụng {tools} ({ai_desc[:80] if ai_desc else 'hỗ trợ'}). Bạn đã kiểm chứng tính xác thực của nội dung/công thức do AI hỗ trợ như thế nào?"
+                ),
+                (
+                    "LIMITATIONS",
+                    f"Những hạn chế hoặc sai số thực nghiệm nào còn tồn tại trong nghiên cứu '{proj_str}' và bạn đề xuất hướng khắc phục gì?"
+                ),
+            ]
 
         questions = []
         for i in range(question_count):

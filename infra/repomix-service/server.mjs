@@ -82,9 +82,13 @@ app.post('/api/v1/pack', async (req, res) => {
       }
     }
 
+    // Strip Repomix boilerplate <file_summary>...</file_summary> to preserve token budget for actual code
+    let cleanedContent = packedContent.replace(/<file_summary>[\s\S]*?<\/file_summary>\s*/i, '');
+    cleanedContent = cleanedContent.replace(/^This file is a merged representation[\s\S]*?(?=<directory_structure>|<files>|<repository>)/i, '');
+
     // Enforce token budget (approx 4 chars per token)
     const charLimit = max_tokens * 4;
-    let trimmedContent = packedContent;
+    let trimmedContent = cleanedContent.trim();
     if (trimmedContent.length > charLimit) {
       trimmedContent = trimmedContent.slice(0, charLimit) + '\n<!-- [TRUNCATED DUE TO TOKEN BUDGET LIMIT] -->\n</repository>';
     }

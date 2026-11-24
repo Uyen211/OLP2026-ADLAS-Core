@@ -61,12 +61,23 @@ class DocumentSummarizer:
                 return f.read(50000)
 
     def _extract_docx(self, file_path: str) -> str:
-        """Extract text from docx file."""
+        """Extract text from docx file, skipping cover page and table of contents."""
         try:
             import docx
             doc = docx.Document(file_path)
             paragraphs = [p.text.strip() for p in doc.paragraphs if p.text.strip()]
-            return "\n\n".join(paragraphs)
+
+            # Skip cover page / TOC boilerplate until main body starts (e.g. CHƯƠNG 1 / 1.1 / MỞ ĐẦU)
+            start_idx = 0
+            for idx, text in enumerate(paragraphs[:80]):
+                upper = text.upper()
+                if any(marker in upper for marker in ("CHƯƠNG 1", "CHƯƠNG I", "1.1.", "MỞ ĐẦU", "INTRODUCTION")):
+                    # Ensure it's not just a TOC line by checking if followed by longer prose soon
+                    if idx + 1 < len(paragraphs) and any(len(p.split()) > 20 for p in paragraphs[idx:idx + 8]):
+                        start_idx = idx
+                        break
+
+            return "\n\n".join(paragraphs[start_idx:])
         except Exception:
             # Fallback simple read
             with open(file_path, "r", encoding="utf-8", errors="ignore") as f:
@@ -132,10 +143,25 @@ class DocumentSummarizer:
         if len(selected) == 1 and len(sentences) > 1:
             selected.append(sentences[-1])
 
-        summary = " ".join(selected)
+        summary = " ".join(selected).strip()
         words = summary.split()
         if len(words) > max_words:
-            summary = " ".join(words[:max_words]) + "."
+            # Keep only complete sentences within max_words
+            kept = []
+            count = 0
+            for sent in selected:
+                s_len = len(sent.split())
+                if count + s_len <= max_words or not kept:
+                    kept.append(sent)
+                    count += s_len
+                else:
+                    break
+            summary = " ".join(kept).strip()
+            if len(summary.split()) > max_words:
+                summary = " ".join(summary.split()[:max_words])
+                last_p = max(summary.rfind("."), summary.rfind("?"), summary.rfind("!"))
+                if last_p > len(summary) * 0.5:
+                    summary = summary[:last_p + 1]
         return summary
 
     def recursive_map_reduce(self, text: str) -> Dict[str, Any]:
@@ -153,24 +179,26 @@ class DocumentSummarizer:
                 "digest_word_count": 0,
             }
 
-        # Map Phase: Summarize each chunk
-        mapped_summaries = [self.summarize_chunk(c, max_words=60) for c in chunks]
-        merged_intermediate = "\n".join(f"- {s}" for s in mapped_summaries)
+        # Map Phase: Summarize each chunk into clean complete sentences
+        mapped_summaries = [self.summarize_chunk(c, max_words=60).lstrip("- ") for c in chunks]
+        merged_intermediate = "\n".join(f"- {s}" for s in mapped_summaries if s)
 
-        # Check total word count
+        # Reduce Phase: If > 400 words, select top-scoring complete sentences without cutting mid-sentence
         words = merged_intermediate.split()
         if len(words) <= 400:
             final_digest = merged_intermediate
         else:
-            # Recursive Reduce Phase: Chunk the intermediate summary and reduce once more
-            secondary_chunks = self.chunk_text_sliding_window(merged_intermediate)
-            secondary_summaries = [self.summarize_chunk(sc, max_words=50) for sc in secondary_chunks]
-            final_digest = "\n".join(f"- {s}" for s in secondary_summaries)
-
-        # Enforce hard ceiling of 400 words
-        final_words = final_digest.split()
-        if len(final_words) > 400:
-            final_digest = " ".join(final_words[:400]) + "..."
+            # Spread selection evenly across the document (beginning, middle, end) up to 400 words
+            step = max(1, len(mapped_summaries) // 8)
+            sampled = [mapped_summaries[i] for i in range(0, len(mapped_summaries), step)]
+            kept_lines = []
+            word_budget = 0
+            for line in sampled:
+                line_words = len(line.split()) + 1
+                if word_budget + line_words <= 395:
+                    kept_lines.append(f"- {line}")
+                    word_budget += line_words
+            final_digest = "\n".join(kept_lines) if kept_lines else merged_intermediate[:2000]
 
         return {
             "executive_summary": final_digest,
