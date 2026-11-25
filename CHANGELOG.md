@@ -17,6 +17,8 @@ The format is based on Keep a Changelog, and this project adheres to Semantic Ve
 - Enhanced GatewayMetricsResponse schema with KongLiveTelemetry model and telemetry_source tag.
 - Updated GatewayMonitoring page to dynamically display Live vs Fallback data sources.
 - Moved Viva question generation to FastAPI BackgroundTasks with fast Gemini 503 fallback.
+- Upgraded Repomix ingestion to Tree-sitter AST compression (`compress: true`) prioritizing most-active Git files and stripped boilerplate `<file_summary>`.
+- Replaced regex/TF-IDF document truncation and Ollama dead code with a clean 2-Call Gemini Long-Context pipeline (`gemini-3.6-flash`, Call 1 summary -> Call 2 Viva questions) plus transparent `generation_source` tracking.
 
 ### Fixed
 - Fixed shared `/app/uploads` volume, safe `.zip`/`.tar` archive extraction for Repomix, and Nginx `/api/` reverse proxy in Docker.
