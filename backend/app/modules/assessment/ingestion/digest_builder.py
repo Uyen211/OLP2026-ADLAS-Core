@@ -1,7 +1,7 @@
 # Copyright (c) 2026 ADLAS Team - OLP 2026 Open Source Software Track
 # SPDX-License-Identifier: MIT
 
-"""Universal Submission Digest Builder uniting Code (Repomix) and Text (Summarizer)."""
+"""Universal Submission Digest Builder uniting Repomix AST Code Packing and Gemini 2-Call Summarization."""
 
 import logging
 import os
@@ -11,6 +11,7 @@ import tempfile
 from typing import Any, Dict, Optional
 import uuid
 import zipfile
+from app.modules.ai_gateway.service import AIGatewayService
 from app.modules.assessment.ingestion.document_summarizer import DocumentSummarizer
 from app.modules.assessment.ingestion.repomix_client import RepomixClient
 
@@ -20,7 +21,7 @@ MAX_UNCOMPRESSED_BYTES = 100 * 1024 * 1024  # 100MB safety limit
 
 
 class UniversalSubmissionDigest:
-    """Unified context object passed to AI Gateway to generate Viva defense questions."""
+    """Unified context object passed to AI Gateway Call 2 to generate Viva defense questions."""
 
     def __init__(self, digest_type: str, content: str, metadata: Dict[str, Any]):
         self.digest_type = digest_type  # "CODE" | "DOCUMENT"
@@ -31,77 +32,109 @@ class UniversalSubmissionDigest:
         return {
             "digest_type": self.digest_type,
             "content": self.content,
-            "metadata": self.metadata
+            "metadata": self.metadata,
         }
 
 
 class UniversalDigestBuilder:
-    """Orchestrates ingestion across code repositories and text reports."""
+    """Orchestrates ingestion across code repositories (Repomix AST) and documents (Gemini Call 1)."""
 
-    def __init__(self, repomix_client: Optional[RepomixClient] = None, summarizer: Optional[DocumentSummarizer] = None):
+    def __init__(
+        self,
+        repomix_client: Optional[RepomixClient] = None,
+        summarizer: Optional[DocumentSummarizer] = None,
+        ai_gateway: Optional[AIGatewayService] = None,
+    ):
         self.repomix_client = repomix_client or RepomixClient()
         self.summarizer = summarizer or DocumentSummarizer()
+        self.ai_gateway = ai_gateway or AIGatewayService()
 
     async def build_digest(
         self,
         file_path: Optional[str] = None,
         git_repo_url: Optional[str] = None,
-        file_name: Optional[str] = None
+        file_name: Optional[str] = None,
+        project_title: str = "",
+        assignment_title: str = "",
     ) -> UniversalSubmissionDigest:
-        """Analyze submission type and construct a token-budgeted universal digest."""
+        """Analyze submission type, pack/extract raw content, and run Call 1 summarization."""
         # 1. Git Repository Submission
         if git_repo_url:
-            pack_res = await self.repomix_client.pack_source_code(git_url=git_repo_url, max_tokens=1800)
+            pack_res = await self.repomix_client.pack_source_code(git_url=git_repo_url, max_tokens=45000)
+            packed_xml = pack_res.get("packed_xml", "")
+            summary, mode = await self.ai_gateway.summarize_submission(
+                digest_type="CODE",
+                raw_content=packed_xml,
+                project_title=project_title,
+                assignment_title=assignment_title,
+            )
             return UniversalSubmissionDigest(
                 digest_type="CODE",
-                content=pack_res.get("packed_xml", ""),
+                content=summary,
                 metadata={
                     "source": "git_repository",
                     "url": git_repo_url,
-                    "estimated_tokens": pack_res.get("estimated_tokens", 0)
-                }
+                    "repomix_source": pack_res.get("source"),
+                    "estimated_tokens": pack_res.get("estimated_tokens", 0),
+                    "summarizer_mode": mode,
+                },
             )
 
         # 2. File Upload Submission
         if file_path and os.path.exists(file_path):
             ext = os.path.splitext(file_path)[1].lower()
 
-            # Zip / Tar Archive (Source code) -> extract to shared directory for Repomix
+            # Zip / Tar Archive (Source code) -> extract to shared directory for Repomix AST packing
             if ext in {".zip", ".tar", ".gz", ".tgz"}:
                 extract_dir = self._safe_extract_archive(file_path, ext)
                 try:
                     pack_res = await self.repomix_client.pack_source_code(
                         source_path=extract_dir,
-                        max_tokens=1800
+                        max_tokens=45000,
                     )
                 finally:
                     if extract_dir and os.path.exists(extract_dir):
                         shutil.rmtree(extract_dir, ignore_errors=True)
+
+                packed_xml = pack_res.get("packed_xml", "")
+                summary, mode = await self.ai_gateway.summarize_submission(
+                    digest_type="CODE",
+                    raw_content=packed_xml,
+                    project_title=project_title,
+                    assignment_title=assignment_title,
+                )
                 return UniversalSubmissionDigest(
                     digest_type="CODE",
-                    content=pack_res.get("packed_xml", ""),
+                    content=summary,
                     metadata={
                         "source": "zip_archive",
                         "file_name": file_name or os.path.basename(file_path),
-                        "estimated_tokens": pack_res.get("estimated_tokens", 0)
-                    }
+                        "repomix_source": pack_res.get("source"),
+                        "estimated_tokens": pack_res.get("estimated_tokens", 0),
+                        "summarizer_mode": mode,
+                    },
                 )
 
-            # Document (PDF, DOCX, TXT)
+            # Document (PDF, DOCX, TXT, MD)
             elif ext in {".pdf", ".docx", ".txt", ".md"}:
-                text = self.summarizer.extract_text_from_file(file_path)
+                raw_text = self.summarizer.extract_text_from_file(file_path)
                 doc_label = file_name or os.path.basename(file_path)
-                summary_res = await self.summarizer.summarize_with_llm_or_fallback(text, doc_label=doc_label)
+                summary, mode = await self.ai_gateway.summarize_submission(
+                    digest_type="DOCUMENT",
+                    raw_content=raw_text,
+                    project_title=project_title or doc_label,
+                    assignment_title=assignment_title,
+                )
                 return UniversalSubmissionDigest(
                     digest_type="DOCUMENT",
-                    content=summary_res["executive_summary"],
+                    content=summary,
                     metadata={
                         "source": "document_report",
                         "file_name": doc_label,
-                        "original_word_count": summary_res["original_word_count"],
-                        "digest_word_count": summary_res["digest_word_count"],
-                        "summarizer_mode": summary_res.get("summarizer_mode", "extractive"),
-                    }
+                        "original_word_count": len(raw_text.split()),
+                        "digest_word_count": len(summary.split()),
+                        "summarizer_mode": mode,
+                    },
                 )
 
         # Fallback when no content could be extracted from file
@@ -109,7 +142,7 @@ class UniversalDigestBuilder:
         return UniversalSubmissionDigest(
             digest_type="DOCUMENT",
             content=f"Tài liệu nộp: {doc_label}. Sinh viên tham gia phản biện trực tiếp dựa trên nội dung đề tài và sản phẩm đã nộp.",
-            metadata={"source": "empty_fallback", "file_name": doc_label}
+            metadata={"source": "empty_fallback", "file_name": doc_label, "summarizer_mode": "empty_fallback"},
         )
 
     def _safe_extract_archive(self, archive_path: str, ext: str) -> str:

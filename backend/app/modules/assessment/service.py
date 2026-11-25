@@ -45,8 +45,8 @@ class AssessmentSubmissionService:
         digest_builder: Optional[UniversalDigestBuilder] = None,
         ai_gateway: Optional[AIGatewayService] = None
     ):
-        self.digest_builder = digest_builder or UniversalDigestBuilder()
         self.ai_gateway = ai_gateway or AIGatewayService()
+        self.digest_builder = digest_builder or UniversalDigestBuilder(ai_gateway=self.ai_gateway)
 
     async def list_course_assignments(
         self,
@@ -319,6 +319,8 @@ class AssessmentSubmissionService:
                 file_path=file_url,
                 git_repo_url=git_repo_url,
                 file_name=file_name,
+                project_title=project_title,
+                assignment_title=assignment_title,
             )
             questions = await self.ai_gateway.generate_viva_questions(
                 assignment_title=assignment_title,
@@ -330,8 +332,12 @@ class AssessmentSubmissionService:
                 course_name=course_name,
                 project_title=project_title,
             )
+            summarizer_mode = digest.metadata.get("summarizer_mode", "unknown")
+            generation_source = self.ai_gateway.last_generation_source
         except Exception as exc:
             logger.error("Background Viva preparation failed (%s), using deterministic fallback", exc)
+            summarizer_mode = "error_fallback"
+            generation_source = "deterministic_fallback"
             questions = self.ai_gateway._generate_deterministic_questions(
                 course_name=course_name,
                 assignment_title=assignment_title,
@@ -351,6 +357,8 @@ class AssessmentSubmissionService:
                     "current_index": 1,
                     "questions": questions,
                     "answers": {},
+                    "summarizer_mode": summarizer_mode,
+                    "generation_source": generation_source,
                 }
                 transcript.status = "READY"
                 await bg_db.commit()
