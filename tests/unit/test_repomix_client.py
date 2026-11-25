@@ -48,3 +48,17 @@ async def test_repomix_client_git_reference_handling():
     result = await client.pack_source_code(git_url="https://github.com/example/demo.git")
     assert result["success"] is True
     assert "https://github.com/example/demo.git" in result["packed_xml"]
+
+
+def test_repomix_trim_keeps_directory_and_most_active_files():
+    raw_xml = (
+        "<directory_structure>\nconfig.py\nservice.py\n</directory_structure>\n\n"
+        "<files>\n"
+        '<file path="config.py">' + ("x" * 600) + "</file>\n"
+        '<file path="service.py">' + ("y" * 200) + "</file>\n"
+        "</files>"
+    )
+    trimmed = RepomixClient._trim_xml_keeping_active_files(raw_xml, max_tokens=100)
+    assert "<directory_structure>" in trimmed
+    assert 'path="service.py"' in trimmed
+    assert 'path="config.py"' not in trimmed

@@ -145,7 +145,7 @@ services:
     volumes:
       - uploads_data:/app/uploads
     ports:
-      - "${REPOMIX_PORT:-3000}:3000"
+      - "${REPOMIX_PORT:-3001}:3000"
     networks:
       - adlas-network
     deploy:
