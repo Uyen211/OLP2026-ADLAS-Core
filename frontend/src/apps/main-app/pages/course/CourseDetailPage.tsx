@@ -12,6 +12,7 @@ import {
   ArrowUp,
   BookOpen,
   CheckCircle2,
+  ClipboardCheck,
   Copy,
   Edit3,
   FileCheck2,
@@ -325,47 +326,56 @@ export const CourseDetailPage: React.FC = () => {
                 </h1>
               </div>
 
-              {canEdit && !course.is_template && (
-                <div className="flex flex-wrap items-center gap-2">
-                  {course.status === "UNPUBLISHED" && (
-                    <MmButton
-                      variant="brand"
-                      onClick={() => setPendingStatusTarget("PUBLISHED")}
-                    >
-                      <CheckCircle2 className="h-4 w-4" />
-                      <span>Xuất bản môn học</span>
-                    </MmButton>
-                  )}
-                  {course.status === "PUBLISHED" && (
-                    <MmButton
-                      variant="secondary"
-                      onClick={() => setPendingStatusTarget("ENROLLMENT_CLOSED")}
-                    >
-                      <Lock className="h-4 w-4" />
-                      <span>Đóng ghi danh</span>
-                    </MmButton>
-                  )}
-                  {course.status === "ENROLLMENT_CLOSED" && (
-                    <MmButton
-                      variant="secondary"
-                      onClick={() => setPendingStatusTarget("PUBLISHED")}
-                    >
-                      <Unlock className="h-4 w-4" />
-                      <span>Mở lại ghi danh</span>
-                    </MmButton>
-                  )}
-                  {(course.status === "PUBLISHED" ||
-                    course.status === "ENROLLMENT_CLOSED") && (
-                    <MmButton
-                      variant="ghost"
-                      onClick={() => setPendingStatusTarget("ARCHIVED")}
-                    >
-                      <Archive className="h-4 w-4" />
-                      <span>Lưu trữ môn</span>
-                    </MmButton>
-                  )}
-                </div>
-              )}
+              <div className="flex flex-wrap items-center gap-2">
+                <Link to={`/courses/${course.id}/exams`}>
+                  <MmButton variant="secondary">
+                    <ClipboardCheck className="h-4 w-4" />
+                    <span>Ngân hàng đề & Khảo thí</span>
+                  </MmButton>
+                </Link>
+
+                {canEdit && !course.is_template && (
+                  <>
+                    {course.status === "UNPUBLISHED" && (
+                      <MmButton
+                        variant="brand"
+                        onClick={() => setPendingStatusTarget("PUBLISHED")}
+                      >
+                        <CheckCircle2 className="h-4 w-4" />
+                        <span>Xuất bản môn học</span>
+                      </MmButton>
+                    )}
+                    {course.status === "PUBLISHED" && (
+                      <MmButton
+                        variant="secondary"
+                        onClick={() => setPendingStatusTarget("ENROLLMENT_CLOSED")}
+                      >
+                        <Lock className="h-4 w-4" />
+                        <span>Đóng ghi danh</span>
+                      </MmButton>
+                    )}
+                    {course.status === "ENROLLMENT_CLOSED" && (
+                      <MmButton
+                        variant="secondary"
+                        onClick={() => setPendingStatusTarget("PUBLISHED")}
+                      >
+                        <Unlock className="h-4 w-4" />
+                        <span>Mở lại ghi danh</span>
+                      </MmButton>
+                    )}
+                    {(course.status === "PUBLISHED" ||
+                      course.status === "ENROLLMENT_CLOSED") && (
+                      <MmButton
+                        variant="ghost"
+                        onClick={() => setPendingStatusTarget("ARCHIVED")}
+                      >
+                        <Archive className="h-4 w-4" />
+                        <span>Lưu trữ môn</span>
+                      </MmButton>
+                    )}
+                  </>
+                )}
+              </div>
             </div>
           </div>
 
