@@ -24,6 +24,7 @@
     "@tiptap/react": "^2.11.5",
     "@tiptap/starter-kit": "^2.11.5",
     "clsx": "^2.1.1",
+    "katex": "^0.19.1",
     "lucide-react": "^0.383.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
@@ -32,6 +33,7 @@
     "zustand": "^5.0.2"
   },
   "devDependencies": {
+    "@types/katex": "^0.16.8",
     "@types/node": "^20.12.12",
     "@types/react": "^18.3.3",
     "@types/react-dom": "^18.3.0",

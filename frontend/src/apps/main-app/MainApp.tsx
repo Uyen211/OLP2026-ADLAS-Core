@@ -31,6 +31,9 @@ import { CourseListPage } from "./pages/course/CourseListPage";
 import { StudentRosterPage } from "./pages/course/StudentRosterPage";
 import { AssignmentDetailPage } from "./pages/assessment/AssignmentDetailPage";
 import { VivaSandboxPage } from "./pages/assessment/VivaSandboxPage";
+import { ExamManagementPage } from "./pages/examination/ExamManagementPage";
+import { ExamResultPage } from "./pages/examination/ExamResultPage";
+import { ExamTakingPage } from "./pages/examination/ExamTakingPage";
 
 const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const accessToken = useAuthStore((s) => s.accessToken);
@@ -110,6 +113,30 @@ export const MainApp: React.FC = () => {
           element={
             <ProtectedRoute>
               <VivaSandboxPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/courses/:courseId/exams"
+          element={
+            <ProtectedRoute>
+              <ExamManagementPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/courses/:courseId/exams/:quizId/take"
+          element={
+            <ProtectedRoute>
+              <ExamTakingPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/courses/:courseId/exams/:quizId/result"
+          element={
+            <ProtectedRoute>
+              <ExamResultPage />
             </ProtectedRoute>
           }
         />
