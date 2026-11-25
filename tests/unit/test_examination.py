@@ -891,7 +891,12 @@ class TestExamTakingAndRegradeRules:
         assert [o["key"] for o in aq1.options_snapshot if o["is_correct"]] == ["B"]
         assert [o["key"] for o in aq2.options_snapshot if o["is_correct"]] == ["A"]
         repo.enqueue_outbox_event.assert_awaited_once()
-        assert repo.enqueue_outbox_event.call_args.kwargs["event_type"] == "examination.quiz_regraded"
+        outbox_kwargs = repo.enqueue_outbox_event.call_args.kwargs
+        assert outbox_kwargs["event_type"] == "examination.quiz_regraded"
+        affected = outbox_kwargs["payload"]["affected_submissions"]
+        assert len(affected) == 2
+        assert all("question_outcomes" in item and len(item["question_outcomes"]) == 1 for item in affected)
+        assert all(item["question_outcomes"][0]["is_correct"] is True for item in affected)
 
     def test_public_api_blocks_ai_tutor_during_controlled_exam_e13(self):
         course_id = uuid.uuid4()

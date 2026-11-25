@@ -532,6 +532,22 @@ async def test_full_examination_lifecycle_snapshot_autosave_resume_and_class_reg
         and e.payload.get("quiz_id") == quiz_id
     ]
     assert len(completed_events) == 2
+    assert all(
+        "user_id" in e.payload
+        and "final_score" in e.payload
+        and any(o.get("lo_id") == str(lo1.id) for o in e.payload.get("question_outcomes", []))
+        for e in completed_events
+    )
     assert len(regraded_events) == 1
     assert regraded_events[0].payload["regrade_scope"] == "ENTIRE_CLASS"
-    assert len(regraded_events[0].payload["affected_submissions"]) == 2
+    affected_regrade = regraded_events[0].payload["affected_submissions"]
+    assert len(affected_regrade) == 2
+    assert all(
+        "user_id" in item
+        and "new_score" in item
+        and any(
+            o.get("lo_id") == str(lo1.id) and o.get("is_correct") is True
+            for o in item.get("question_outcomes", [])
+        )
+        for item in affected_regrade
+    )

@@ -1513,6 +1513,10 @@ class ExaminationService:
                 submission.status = SubmissionStatus.REGRADE_RESOLVED.value
                 await self.db.flush()
 
+            sub_qs = await self.repo.list_attempt_questions(submission.id)
+            _, _, sub_outcomes = self._evaluate_submission(
+                sub_qs, dict(submission.student_answers or {})
+            )
             await self.repo.enqueue_outbox_event(
                 event_type="examination.quiz_regraded",
                 aggregate_type="QuizRegrade",
@@ -1528,6 +1532,7 @@ class ExaminationService:
                             "user_id": str(submission.user_id),
                             "old_score": float(old_score),
                             "new_score": float(payload.new_score),
+                            "question_outcomes": sub_outcomes,
                         }
                     ],
                 },
@@ -1596,7 +1601,7 @@ class ExaminationService:
         for sub in class_submissions:
             prev_score = sub.final_score if sub.final_score is not None else (sub.auto_score or Decimal("0.0"))
             sub_qs = await self.repo.list_attempt_questions(sub.id)
-            recomputed, _, _ = self._evaluate_submission(
+            recomputed, _, sub_outcomes = self._evaluate_submission(
                 sub_qs, dict(sub.student_answers or {})
             )
             sub.final_score = recomputed
@@ -1607,6 +1612,7 @@ class ExaminationService:
                     "user_id": str(sub.user_id),
                     "old_score": float(prev_score),
                     "new_score": float(recomputed),
+                    "question_outcomes": sub_outcomes,
                 }
             )
 
