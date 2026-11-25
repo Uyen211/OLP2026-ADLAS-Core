@@ -86,3 +86,39 @@ class VivaTimeoutException(ADLASException):
             detail="Viva Sandbox session time limit has expired. Answers have been automatically retrieved.",
             status_code=status.HTTP_400_BAD_REQUEST
         )
+
+
+class IntegrityPledgeRequiredException(ADLASException):
+    def __init__(self):
+        super().__init__(
+            code="E-1",
+            detail="Academic integrity pledge must be signed before submitting.",
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY
+        )
+
+
+class VivaSessionPreparingException(ADLASException):
+    def __init__(self):
+        super().__init__(
+            code="E-VIVA-PREPARING",
+            detail="Viva defense questions are still being prepared. Please retry in a few seconds.",
+            status_code=status.HTTP_409_CONFLICT
+        )
+
+
+class VivaQuestionMismatchException(ADLASException):
+    def __init__(self):
+        super().__init__(
+            code="E-2",
+            detail="Submitted question_id does not match the active Viva question.",
+            status_code=status.HTTP_400_BAD_REQUEST
+        )
+
+
+class AssessmentAccessDeniedException(ADLASException):
+    def __init__(self, detail: str = "Instructor authorization is required to review course submissions."):
+        super().__init__(
+            code="E-ASSESSMENT-02",
+            detail=detail,
+            status_code=status.HTTP_403_FORBIDDEN
+        )

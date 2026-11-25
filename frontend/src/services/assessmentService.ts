@@ -5,18 +5,29 @@
 
 import type {
   AssignmentDetail,
+  AssignmentSummaryItem,
   PresignedUploadUrlRequest,
   PresignedUploadUrlResponse,
   Submission,
   SubmissionCreateRequest,
+  SubmissionReviewDetailResponse,
+  SubmissionReviewSummaryItem,
   VivaAnswerSubmitRequest,
   VivaAnswerSubmitResponse,
   VivaSecurityViolationRequest,
   VivaStartResponse,
+  VivaTimeoutRequest,
 } from "../types/assessment";
 import { httpRequest } from "./httpClient";
 
 export const assessmentService = {
+  /**
+   * Lấy danh sách bài tập của một môn học
+   */
+  listCourseAssignments(courseId: string): Promise<AssignmentSummaryItem[]> {
+    return httpRequest<AssignmentSummaryItem[]>(`/assessments/courses/${courseId}/assignments`);
+  },
+
   /**
    * Lấy thông tin chi tiết bài tập, lịch hạn chót và lịch sử bài nộp của sinh viên
    */
@@ -91,25 +102,48 @@ export const assessmentService = {
   },
 
   /**
+   * Tự động niêm phong phiên vấn đáp khi hết giờ đếm ngược
+   */
+  timeoutVivaSession(
+    submissionId: string,
+    payload: VivaTimeoutRequest = {}
+  ): Promise<VivaAnswerSubmitResponse> {
+    return httpRequest<VivaAnswerSubmitResponse>(
+      `/assessments/submissions/${submissionId}/viva/timeout`,
+      {
+        method: "POST",
+        body: payload,
+      }
+    );
+  },
+
+  /**
    * Tải tệp bài nộp trực tiếp lên máy chủ để trích xuất nội dung văn bản / mã nguồn
    */
-  async uploadFile(file: File): Promise<{ file_url: string; file_name: string }> {
+  uploadFile(file: File): Promise<{ file_url: string; file_name: string }> {
     const formData = new FormData();
     formData.append("file", file);
-    const token =
-      localStorage.getItem("adlas_access_token") ||
-      sessionStorage.getItem("adlas_access_token") ||
-      "";
-    const response = await fetch("/api/v1/assessments/upload", {
+    return httpRequest<{ file_url: string; file_name: string }>("/assessments/upload", {
       method: "POST",
-      headers: {
-        ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      },
-      body: formData,
+      formData,
     });
-    if (!response.ok) {
-      throw new Error("Tải tệp bài nộp lên máy chủ thất bại.");
-    }
-    return response.json();
+  },
+
+  /**
+   * [Giảng viên] Lấy toàn bộ danh sách bài nộp của sinh viên cho một bài tập
+   */
+  listAssignmentSubmissions(assignmentId: string): Promise<SubmissionReviewSummaryItem[]> {
+    return httpRequest<SubmissionReviewSummaryItem[]>(
+      `/assessments/assignments/${assignmentId}/submissions`
+    );
+  },
+
+  /**
+   * [Giảng viên] Tải chi tiết tóm tắt AI, câu hỏi Viva, câu trả lời và nhật ký vi phạm
+   */
+  getSubmissionReview(submissionId: string): Promise<SubmissionReviewDetailResponse> {
+    return httpRequest<SubmissionReviewDetailResponse>(
+      `/assessments/submissions/${submissionId}/review`
+    );
   },
 };

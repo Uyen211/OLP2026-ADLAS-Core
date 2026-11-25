@@ -28,13 +28,10 @@ class Settings(BaseSettings):
     JWT_ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 60
 
-    # AI Configuration (Dual-Mode)
-    AI_PROVIDER: str = "gemini"  # "gemini" or "ollama"
+    # AI Configuration (Google Gemini API)
+    AI_PROVIDER: str = "gemini"
     GEMINI_API_KEY: Optional[str] = None
-    GEMINI_MODEL: str = "gemini-3-flash-preview"
-    OLLAMA_BASE_URL: str = "http://localhost:11434"
-    OLLAMA_MODEL_CODE: str = "qwen2.5-coder:7b"
-    OLLAMA_MODEL_TEXT: str = "llama3.2:3b"
+    GEMINI_MODEL: str = "gemini-3.6-flash"
 
     # Kong Gateway Admin URL
     KONG_ADMIN_URL: str = "http://kong:8001"

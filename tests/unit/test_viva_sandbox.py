@@ -9,9 +9,10 @@ import uuid
 import pytest
 from app.modules.assessment.exceptions import (
     VivaAnswerWordCountException,
+    VivaSessionPreparingException,
 )
 from app.modules.assessment.models import AssignmentSubmission, VivaTranscript
-from app.modules.assessment.schemas import VivaAnswerSubmitRequest
+from app.modules.assessment.schemas import VivaAnswerSubmitRequest, VivaTimeoutRequest
 from app.modules.assessment.viva_service import VivaSandboxService
 
 
@@ -190,3 +191,42 @@ async def test_viva_record_security_violations():
     assert len(mock_transcript.violation_logs) == 2
     assert mock_transcript.violation_logs[0]["type"] == "PASTE_ATTEMPT"
     assert mock_transcript.violation_logs[1]["type"] == "WINDOW_BLUR"
+
+
+@pytest.mark.asyncio
+async def test_viva_preparing_raises_409_and_timeout_seals_session():
+    service = VivaSandboxService()
+    user_id = uuid.uuid4()
+    submission_id = uuid.uuid4()
+
+    mock_sub = AssignmentSubmission(id=submission_id, user_id=user_id, status="PENDING_VIVA")
+    mock_transcript = VivaTranscript(
+        id=uuid.uuid4(),
+        submission_id=submission_id,
+        questions_answers={"total_questions": 3, "current_index": 1, "questions": [], "answers": {}},
+        violation_logs=[],
+        started_at=datetime.now(timezone.utc),
+        status="PREPARING"
+    )
+    mock_transcript.submission = mock_sub
+
+    db = AsyncMock()
+    mock_res = MagicMock()
+    mock_res.scalar_one_or_none.return_value = mock_transcript
+    db.execute.return_value = mock_res
+
+    with pytest.raises(VivaSessionPreparingException):
+        await service.start_session(db=db, submission_id=submission_id, user_id=user_id)
+
+    mock_transcript.status = "IN_PROGRESS"
+    res = await service.timeout_session(
+        db=db,
+        submission_id=submission_id,
+        user_id=user_id,
+        payload=VivaTimeoutRequest(question_id="q1", answer_text="Partial draft answer", time_spent_seconds=120)
+    )
+    assert res.is_completed is True
+    assert res.status == "TIMEOUT"
+    assert mock_transcript.status == "TIMEOUT"
+    assert mock_sub.status == "VIVA_COMPLETED"
+    assert mock_transcript.questions_answers["answers"]["q1"]["auto_saved_on_timeout"] is True

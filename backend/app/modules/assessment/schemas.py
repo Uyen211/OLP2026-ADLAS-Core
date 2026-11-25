@@ -85,9 +85,27 @@ class AssignmentDetailResponse(BaseModel):
     late_penalty_percent: float
     is_viva_required: bool
     viva_question_count: int
+    ai_policy_level: str = "YELLOW"
+    my_role: Optional[str] = None
     submissions: List[SubmissionResponse] = Field(default_factory=list)
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class AssignmentSummaryItem(BaseModel):
+    """Summary item for listing assignments within a course."""
+
+    id: uuid.UUID
+    course_id: uuid.UUID
+    title: str
+    due_date: datetime
+    until_date: Optional[datetime] = None
+    late_penalty_percent: float
+    is_viva_required: bool
+    viva_question_count: int
+    ai_policy_level: str = "YELLOW"
+    submission_count: int = 0
+    latest_status: Optional[str] = None
 
 
 class VivaQuestionSchema(BaseModel):
@@ -107,10 +125,19 @@ class VivaStartResponse(BaseModel):
     submission_id: uuid.UUID
     total_questions: int
     total_duration_seconds: int
+    remaining_seconds: int
     current_question_index: int
     question: VivaQuestionSchema
     status: str
     violation_logs: List[Dict[str, Any]] = Field(default_factory=list)
+
+
+class VivaTimeoutRequest(BaseModel):
+    """Optional partial answer payload sent when Viva countdown expires."""
+
+    question_id: Optional[str] = None
+    answer_text: Optional[str] = None
+    time_spent_seconds: Optional[int] = Field(None, ge=0)
 
 
 class VivaAnswerSubmitRequest(BaseModel):
@@ -144,3 +171,70 @@ class PresignedUploadUrlRequest(BaseModel):
     file_name: str
     content_type: str
     file_size_bytes: int
+
+
+class SubmissionReviewSummaryItem(BaseModel):
+    """Instructor overview row for a student's submission and Viva state."""
+
+    id: uuid.UUID
+    assignment_id: uuid.UUID
+    user_id: uuid.UUID
+    student_name: str
+    student_email: str
+    version: int
+    project_title: Optional[str] = None
+    file_url: Optional[str] = None
+    git_repo_url: Optional[str] = None
+    self_contribution_pct: int
+    submitted_at: datetime
+    is_late: bool
+    late_penalty_applied: float
+    status: str
+    viva_status: Optional[str] = None
+    has_ai_digest: bool = False
+    violation_count: int = 0
+
+
+class VivaAnswerEntrySchema(BaseModel):
+    """Recorded student answer for a single Viva question."""
+
+    answer_text: str = ""
+    time_spent_seconds: Optional[int] = None
+    submitted_at: Optional[str] = None
+    auto_saved_on_timeout: bool = False
+
+
+class SubmissionReviewDetailResponse(BaseModel):
+    """Full instructor inspection payload combining AI digest, Viva Q&A, and integrity logs."""
+
+    submission_id: uuid.UUID
+    assignment_id: uuid.UUID
+    assignment_title: str
+    course_id: uuid.UUID
+    student_id: uuid.UUID
+    student_name: str
+    student_email: str
+    version: int
+    project_title: Optional[str] = None
+    file_url: Optional[str] = None
+    git_repo_url: Optional[str] = None
+    comments: Optional[str] = None
+    ai_disclosure_data: Dict[str, Any] = Field(default_factory=dict)
+    self_contribution_pct: int
+    is_pledge_signed: bool
+    submitted_at: datetime
+    is_late: bool
+    late_penalty_applied: float
+    status: str
+    viva_status: Optional[str] = None
+    viva_started_at: Optional[datetime] = None
+    viva_completed_at: Optional[datetime] = None
+    ai_digest_summary: Optional[str] = None
+    digest_type: Optional[str] = None
+    digest_metadata: Dict[str, Any] = Field(default_factory=dict)
+    summarizer_mode: Optional[str] = None
+    generation_source: Optional[str] = None
+    total_questions: int = 0
+    questions: List[VivaQuestionSchema] = Field(default_factory=list)
+    answers: Dict[str, VivaAnswerEntrySchema] = Field(default_factory=dict)
+    violation_logs: List[Dict[str, Any]] = Field(default_factory=list)
