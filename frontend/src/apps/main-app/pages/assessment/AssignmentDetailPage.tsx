@@ -23,6 +23,7 @@ import {
 import { clsx } from "clsx";
 
 import { assessmentService } from "../../../../services/assessmentService";
+import { useCourseContextStore } from "../../../../stores/courseContextStore";
 import type { AssignmentDetail, Submission } from "../../../../types/assessment";
 import { MmButton } from "../../components/MmButton";
 import { MmModal } from "../../components/MmModal";
@@ -30,6 +31,7 @@ import { MarkdownRenderer } from "../../components/MarkdownRenderer";
 import { PillTabs } from "../../components/PillTabs";
 import { toast } from "../../components/Toast";
 import { resolveErrorMessage } from "../../constants/errorMessages";
+import { InstructorReviewPanel } from "./InstructorReviewPanel";
 
 const AI_TOOL_OPTIONS = [
   { id: "chatgpt", label: "ChatGPT (OpenAI)" },
@@ -61,6 +63,8 @@ export const AssignmentDetailPage: React.FC = () => {
   const [aiUsageDescription, setAiUsageDescription] = useState<string>("");
   const [isPledgeSigned, setIsPledgeSigned] = useState<boolean>(false);
   const [showResubmitConfirm, setShowResubmitConfirm] = useState<boolean>(false);
+  const [instructorViewMode, setInstructorViewMode] = useState<"review" | "preview">("review");
+  const activeCourseRole = useCourseContextStore((s) => s.activeRole);
 
   // Validation Errors
   const [formErrors, setFormErrors] = useState<Record<string, string>>({});
@@ -261,6 +265,9 @@ export const AssignmentDetailPage: React.FC = () => {
       ? assignment.submissions[0]
       : undefined;
 
+  const isInstructor =
+    assignment.my_role === "INSTRUCTOR" || activeCourseRole === "INSTRUCTOR";
+
   return (
     <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
       {/* Top Breadcrumb & Title */}
@@ -315,6 +322,26 @@ export const AssignmentDetailPage: React.FC = () => {
         </div>
       </div>
 
+      {isInstructor && (
+        <div className="mb-6 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-[#dbeafe] bg-[#eff6ff]/50 px-4 py-3">
+          <p className="text-xs font-medium text-[#1e3a8a]">
+            Chế độ Giảng viên: Bạn có thể kiểm tra toàn bộ bản tóm tắt AI, câu hỏi Viva và câu trả lời của sinh viên.
+          </p>
+          <PillTabs
+            items={[
+              { value: "review", label: "Kiểm tra bài nộp & Viva (Giảng viên)" },
+              { value: "preview", label: "Xem trước giao diện nộp bài (SV)" },
+            ]}
+            value={instructorViewMode}
+            onChange={(val) => setInstructorViewMode(val as "review" | "preview")}
+          />
+        </div>
+      )}
+
+      {isInstructor && instructorViewMode === "review" && assignmentId ? (
+        <InstructorReviewPanel assignmentId={assignmentId} />
+      ) : (
+        <>
       {/* Main Grid: Left 8 cols (Instructions & Submission Form), Right 4 cols (Schedule & Viva & History) */}
       <div className="grid grid-cols-1 gap-8 lg:grid-cols-12">
         {/* Left Column */}
@@ -862,6 +889,8 @@ export const AssignmentDetailPage: React.FC = () => {
           </div>
         </div>
       </MmModal>
+        </>
+      )}
     </div>
   );
 };

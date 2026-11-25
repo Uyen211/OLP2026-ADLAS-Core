@@ -10,6 +10,8 @@ import type {
   PresignedUploadUrlResponse,
   Submission,
   SubmissionCreateRequest,
+  SubmissionReviewDetailResponse,
+  SubmissionReviewSummaryItem,
   VivaAnswerSubmitRequest,
   VivaAnswerSubmitResponse,
   VivaSecurityViolationRequest,
@@ -125,5 +127,23 @@ export const assessmentService = {
       method: "POST",
       formData,
     });
+  },
+
+  /**
+   * [Giảng viên] Lấy toàn bộ danh sách bài nộp của sinh viên cho một bài tập
+   */
+  listAssignmentSubmissions(assignmentId: string): Promise<SubmissionReviewSummaryItem[]> {
+    return httpRequest<SubmissionReviewSummaryItem[]>(
+      `/assessments/assignments/${assignmentId}/submissions`
+    );
+  },
+
+  /**
+   * [Giảng viên] Tải chi tiết tóm tắt AI, câu hỏi Viva, câu trả lời và nhật ký vi phạm
+   */
+  getSubmissionReview(submissionId: string): Promise<SubmissionReviewDetailResponse> {
+    return httpRequest<SubmissionReviewDetailResponse>(
+      `/assessments/submissions/${submissionId}/review`
+    );
   },
 };

@@ -19,6 +19,7 @@ from app.core.database import AsyncSessionLocal
 from app.modules.ai_gateway.service import AIGatewayService
 from app.modules.assessment.exceptions import (
     AIDisclosureValidationException,
+    AssessmentAccessDeniedException,
     AssessmentNotFoundException,
     IntegrityPledgeRequiredException,
     InvalidSubmissionPayloadException,
@@ -32,7 +33,13 @@ from app.modules.assessment.schemas import (
     AssignmentSummaryItem,
     SubmissionCreateRequest,
     SubmissionResponse,
+    SubmissionReviewDetailResponse,
+    SubmissionReviewSummaryItem,
+    VivaAnswerEntrySchema,
+    VivaQuestionSchema,
 )
+from app.modules.course.models import CourseEnrollment
+from app.modules.system.models import User
 
 logger = logging.getLogger(__name__)
 
@@ -85,11 +92,30 @@ class AssessmentSubmissionService:
             )
         return items
 
+    async def _get_user_course_role(
+        self,
+        db: AsyncSession,
+        course_id: uuid.UUID,
+        user_id: uuid.UUID,
+        system_role: Optional[str] = None,
+    ) -> Optional[str]:
+        """Resolve contextual role ('INSTRUCTOR' / 'STUDENT') for the user in a course."""
+        if (system_role or "").upper() in {"ADMIN", "SUPER_ADMIN"}:
+            return "INSTRUCTOR"
+        stmt = select(CourseEnrollment.contextual_role).where(
+            CourseEnrollment.course_id == course_id,
+            CourseEnrollment.user_id == user_id,
+            CourseEnrollment.enrollment_status == "ACTIVE",
+        )
+        res = await db.execute(stmt)
+        return res.scalar_one_or_none()
+
     async def get_assignment_detail(
         self,
         db: AsyncSession,
         assignment_id: uuid.UUID,
-        user_id: uuid.UUID
+        user_id: uuid.UUID,
+        current_user: Optional[User] = None,
     ) -> AssignmentDetailResponse:
         """Fetch assignment specification and student submission history."""
         stmt = (
@@ -103,6 +129,13 @@ class AssessmentSubmissionService:
         assignment = res.scalar_one_or_none()
         if not assignment:
             raise AssessmentNotFoundException(str(assignment_id))
+
+        my_role = await self._get_user_course_role(
+            db=db,
+            course_id=assignment.course_id,
+            user_id=user_id,
+            system_role=current_user.system_role if current_user else None,
+        )
 
         submissions = sorted(assignment.submissions, key=lambda s: s.version, reverse=True)
         return AssignmentDetailResponse(
@@ -120,7 +153,146 @@ class AssessmentSubmissionService:
             is_viva_required=assignment.is_viva_required,
             viva_question_count=assignment.viva_question_count,
             ai_policy_level=assignment.ai_policy_level or "YELLOW",
+            my_role=my_role,
             submissions=[SubmissionResponse.model_validate(s) for s in submissions]
+        )
+
+    async def list_assignment_submissions(
+        self,
+        db: AsyncSession,
+        assignment_id: uuid.UUID,
+        current_user: User,
+    ) -> List[SubmissionReviewSummaryItem]:
+        """List all student submissions for an assignment (Instructor / Admin only)."""
+        a_res = await db.execute(select(Assignment).where(Assignment.id == assignment_id))
+        assignment = a_res.scalar_one_or_none()
+        if not assignment:
+            raise AssessmentNotFoundException(str(assignment_id))
+
+        role = await self._get_user_course_role(
+            db=db,
+            course_id=assignment.course_id,
+            user_id=current_user.id,
+            system_role=current_user.system_role,
+        )
+        if role != "INSTRUCTOR":
+            raise AssessmentAccessDeniedException()
+
+        stmt = (
+            select(AssignmentSubmission)
+            .where(AssignmentSubmission.assignment_id == assignment_id)
+            .options(
+                selectinload(AssignmentSubmission.user),
+                selectinload(AssignmentSubmission.viva_transcript),
+            )
+            .order_by(AssignmentSubmission.submitted_at.desc())
+        )
+        res = await db.execute(stmt)
+        subs = res.scalars().all()
+
+        items: List[SubmissionReviewSummaryItem] = []
+        for sub in subs:
+            transcript = sub.viva_transcript
+            qa_data = (transcript.questions_answers or {}) if transcript else {}
+            digest_text = str(qa_data.get("ai_digest_summary") or "").strip()
+            student = sub.user
+            items.append(
+                SubmissionReviewSummaryItem(
+                    id=sub.id,
+                    assignment_id=sub.assignment_id,
+                    user_id=sub.user_id,
+                    student_name=student.full_name if student else "Sinh viên",
+                    student_email=student.email if student else "",
+                    version=sub.version,
+                    project_title=sub.project_title,
+                    file_url=sub.file_url,
+                    git_repo_url=sub.git_repo_url,
+                    self_contribution_pct=sub.self_contribution_pct,
+                    submitted_at=sub.submitted_at,
+                    is_late=sub.is_late,
+                    late_penalty_applied=float(sub.late_penalty_applied),
+                    status=sub.status,
+                    viva_status=transcript.status if transcript else None,
+                    has_ai_digest=bool(digest_text),
+                    violation_count=len(transcript.violation_logs or []) if transcript else 0,
+                )
+            )
+        return items
+
+    async def get_submission_review(
+        self,
+        db: AsyncSession,
+        submission_id: uuid.UUID,
+        current_user: User,
+    ) -> SubmissionReviewDetailResponse:
+        """Retrieve complete AI digest summary, Viva Q&A, and integrity logs for instructor review."""
+        stmt = (
+            select(AssignmentSubmission)
+            .where(AssignmentSubmission.id == submission_id)
+            .options(
+                selectinload(AssignmentSubmission.assignment),
+                selectinload(AssignmentSubmission.user),
+                selectinload(AssignmentSubmission.viva_transcript),
+            )
+        )
+        res = await db.execute(stmt)
+        sub = res.scalar_one_or_none()
+        if not sub or not sub.assignment:
+            raise AssessmentNotFoundException(str(submission_id))
+
+        role = await self._get_user_course_role(
+            db=db,
+            course_id=sub.assignment.course_id,
+            user_id=current_user.id,
+            system_role=current_user.system_role,
+        )
+        if role != "INSTRUCTOR":
+            raise AssessmentAccessDeniedException()
+
+        transcript = sub.viva_transcript
+        qa_data = dict(transcript.questions_answers or {}) if transcript else {}
+        raw_questions = qa_data.get("questions", []) or []
+        questions = [VivaQuestionSchema(**q) for q in raw_questions if isinstance(q, dict)]
+
+        raw_answers = qa_data.get("answers", {}) or {}
+        answers: dict[str, VivaAnswerEntrySchema] = {}
+        for q_id, ans_val in raw_answers.items():
+            if isinstance(ans_val, dict):
+                answers[str(q_id)] = VivaAnswerEntrySchema(**ans_val)
+
+        student = sub.user
+        return SubmissionReviewDetailResponse(
+            submission_id=sub.id,
+            assignment_id=sub.assignment_id,
+            assignment_title=sub.assignment.title,
+            course_id=sub.assignment.course_id,
+            student_id=sub.user_id,
+            student_name=student.full_name if student else "Sinh viên",
+            student_email=student.email if student else "",
+            version=sub.version,
+            project_title=sub.project_title,
+            file_url=sub.file_url,
+            git_repo_url=sub.git_repo_url,
+            comments=sub.comments,
+            ai_disclosure_data=sub.ai_disclosure_data or {},
+            self_contribution_pct=sub.self_contribution_pct,
+            is_pledge_signed=sub.is_pledge_signed,
+            submitted_at=sub.submitted_at,
+            is_late=sub.is_late,
+            late_penalty_applied=float(sub.late_penalty_applied),
+            status=sub.status,
+            viva_status=transcript.status if transcript else None,
+            viva_started_at=transcript.started_at if transcript else None,
+            viva_completed_at=transcript.completed_at if transcript else None,
+            ai_digest_summary=qa_data.get("ai_digest_summary"),
+            digest_type=qa_data.get("digest_type"),
+            digest_metadata=qa_data.get("digest_metadata") or {},
+            summarizer_mode=qa_data.get("summarizer_mode"),
+            generation_source=qa_data.get("generation_source"),
+            total_questions=int(qa_data.get("total_questions", len(questions))),
+            questions=questions,
+            answers=answers,
+            violation_logs=list(transcript.violation_logs or []) if transcript else [],
         )
 
     async def create_submission(
@@ -332,10 +504,16 @@ class AssessmentSubmissionService:
                 course_name=course_name,
                 project_title=project_title,
             )
+            ai_digest_summary = digest.content
+            digest_type = digest.digest_type
+            digest_metadata = digest.metadata
             summarizer_mode = digest.metadata.get("summarizer_mode", "unknown")
             generation_source = self.ai_gateway.last_generation_source
         except Exception as exc:
             logger.error("Background Viva preparation failed (%s), using deterministic fallback", exc)
+            ai_digest_summary = ""
+            digest_type = "DOCUMENT"
+            digest_metadata = {"error": str(exc)}
             summarizer_mode = "error_fallback"
             generation_source = "deterministic_fallback"
             questions = self.ai_gateway._generate_deterministic_questions(
@@ -357,6 +535,9 @@ class AssessmentSubmissionService:
                     "current_index": 1,
                     "questions": questions,
                     "answers": {},
+                    "ai_digest_summary": ai_digest_summary,
+                    "digest_type": digest_type,
+                    "digest_metadata": digest_metadata,
                     "summarizer_mode": summarizer_mode,
                     "generation_source": generation_source,
                 }
@@ -374,7 +555,9 @@ class AssessmentSubmissionService:
         digest = await self.digest_builder.build_digest(
             file_path=payload.file_url,
             git_repo_url=payload.git_repo_url,
-            file_name=payload.file_name
+            file_name=payload.file_name,
+            project_title=submission.project_title or "",
+            assignment_title=assignment.title,
         )
 
         course_name = assignment.course.name if assignment.course else ""
@@ -394,7 +577,12 @@ class AssessmentSubmissionService:
             "total_questions": assignment.viva_question_count,
             "current_index": 1,
             "questions": questions,
-            "answers": {}
+            "answers": {},
+            "ai_digest_summary": digest.content,
+            "digest_type": digest.digest_type,
+            "digest_metadata": digest.metadata,
+            "summarizer_mode": digest.metadata.get("summarizer_mode", "unknown"),
+            "generation_source": self.ai_gateway.last_generation_source,
         }
 
         viva_transcript = VivaTranscript(

@@ -16,6 +16,8 @@ from app.modules.assessment.schemas import (
     PresignedUploadUrlRequest,
     SubmissionCreateRequest,
     SubmissionResponse,
+    SubmissionReviewDetailResponse,
+    SubmissionReviewSummaryItem,
     VivaAnswerSubmitRequest,
     VivaAnswerSubmitResponse,
     VivaSecurityViolationRequest,
@@ -55,7 +57,42 @@ async def get_assignment_detail(
     return await submission_service.get_assignment_detail(
         db=db,
         assignment_id=assignment_id,
-        user_id=current_user.user.id
+        user_id=current_user.user.id,
+        current_user=current_user.user,
+    )
+
+
+@router.get(
+    "/assignments/{assignment_id}/submissions",
+    response_model=List[SubmissionReviewSummaryItem],
+)
+async def list_assignment_submissions(
+    assignment_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: CurrentUser = Depends(get_current_user),
+):
+    """List all student submissions of an assignment for instructor inspection."""
+    return await submission_service.list_assignment_submissions(
+        db=db,
+        assignment_id=assignment_id,
+        current_user=current_user.user,
+    )
+
+
+@router.get(
+    "/submissions/{submission_id}/review",
+    response_model=SubmissionReviewDetailResponse,
+)
+async def get_submission_viva_review(
+    submission_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: CurrentUser = Depends(get_current_user),
+):
+    """Load AI digest summary, Viva Q&A transcript, and violation logs for instructor review."""
+    return await submission_service.get_submission_review(
+        db=db,
+        submission_id=submission_id,
+        current_user=current_user.user,
     )
 
 

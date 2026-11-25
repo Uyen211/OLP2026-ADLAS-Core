@@ -29,6 +29,7 @@ export const ERROR_MESSAGES: Record<string, string> = {
   "E-VIVA-03": "Phiên vấn đáp Viva đã hoàn tất và được niêm phong.",
   "E-VIVA-04": "Đã hết thời gian làm bài vấn đáp Viva. Hệ thống đã tự động niêm phong biên bản.",
   "E-VIVA-PREPARING": "Hệ thống AI đang hoàn tất phân tích bài nộp để tạo câu hỏi vấn đáp. Vui lòng chờ trong giây lát.",
+  "E-ASSESSMENT-02": "Chỉ giảng viên của môn học mới có quyền xem bài nộp, bản tóm tắt và biên bản Viva của sinh viên.",
   "E-SUB-01": "Bài nộp đã quá hạn chót cho phép nộp trễ (Until Date).",
   "E-SUB-02": "Mô tả giải trình sử dụng AI phải từ 20 ký tự trở lên.",
   "E-VIVA-WORD-COUNT": "Câu trả lời vấn đáp phải đạt tối thiểu 50 từ trước khi gửi.",

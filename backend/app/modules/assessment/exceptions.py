@@ -113,3 +113,12 @@ class VivaQuestionMismatchException(ADLASException):
             detail="Submitted question_id does not match the active Viva question.",
             status_code=status.HTTP_400_BAD_REQUEST
         )
+
+
+class AssessmentAccessDeniedException(ADLASException):
+    def __init__(self, detail: str = "Instructor authorization is required to review course submissions."):
+        super().__init__(
+            code="E-ASSESSMENT-02",
+            detail=detail,
+            status_code=status.HTTP_403_FORBIDDEN
+        )

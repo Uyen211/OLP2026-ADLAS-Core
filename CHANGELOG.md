@@ -12,6 +12,7 @@ The format is based on Keep a Changelog, and this project adheres to Semantic Ve
 - Added course assignments listing API (`GET /api/v1/assessments/courses/{course_id}/assignments`) and Assignments tab in CourseDetailPage.
 - Added Viva timeout sealing endpoint (`POST /api/v1/assessments/submissions/{submission_id}/viva/timeout`) and `PREPARING` background state.
 - Added `04-assessment-extensions.sql` migration for `assessment.assignment_submissions.project_title`.
+- Persisted Call 1 `ai_digest_summary`, `digest_type`, and `digest_metadata` in `assessment.viva_transcripts.questions_answers`, added Instructor Submission & Viva Review endpoints (`GET /assignments/{assignment_id}/submissions`, `GET /submissions/{submission_id}/review`), and implemented `InstructorReviewPanel` UI in `AssignmentDetailPage`.
 
 ### Changed
 - Enhanced GatewayMetricsResponse schema with KongLiveTelemetry model and telemetry_source tag.

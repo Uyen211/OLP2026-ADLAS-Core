@@ -71,6 +71,7 @@ export interface AssignmentDetail {
   is_viva_required: boolean;
   viva_question_count: number;
   ai_policy_level: "GREEN" | "YELLOW" | "RED" | string;
+  my_role?: "INSTRUCTOR" | "STUDENT" | string | null;
   submissions: Submission[];
 }
 
@@ -134,4 +135,70 @@ export interface PresignedUploadUrlRequest {
 export interface PresignedUploadUrlResponse {
   upload_url: string;
   file_url: string;
+}
+
+export interface SubmissionReviewSummaryItem {
+  id: string;
+  assignment_id: string;
+  user_id: string;
+  student_name: string;
+  student_email: string;
+  version: number;
+  project_title?: string | null;
+  file_url?: string | null;
+  git_repo_url?: string | null;
+  self_contribution_pct: number;
+  submitted_at: string;
+  is_late: boolean;
+  late_penalty_applied: number;
+  status: string;
+  viva_status?: string | null;
+  has_ai_digest: boolean;
+  violation_count: number;
+}
+
+export interface VivaAnswerEntry {
+  answer_text: string;
+  time_spent_seconds?: number | null;
+  submitted_at?: string | null;
+  auto_saved_on_timeout?: boolean;
+}
+
+export interface SubmissionReviewDetailResponse {
+  submission_id: string;
+  assignment_id: string;
+  assignment_title: string;
+  course_id: string;
+  student_id: string;
+  student_name: string;
+  student_email: string;
+  version: number;
+  project_title?: string | null;
+  file_url?: string | null;
+  git_repo_url?: string | null;
+  comments?: string | null;
+  ai_disclosure_data: {
+    self_contribution_pct?: number;
+    tools_used?: string[];
+    usage_description?: string;
+    [key: string]: unknown;
+  };
+  self_contribution_pct: number;
+  is_pledge_signed: boolean;
+  submitted_at: string;
+  is_late: boolean;
+  late_penalty_applied: number;
+  status: string;
+  viva_status?: string | null;
+  viva_started_at?: string | null;
+  viva_completed_at?: string | null;
+  ai_digest_summary?: string | null;
+  digest_type?: string | null;
+  digest_metadata?: Record<string, unknown>;
+  summarizer_mode?: string | null;
+  generation_source?: string | null;
+  total_questions: number;
+  questions: VivaQuestion[];
+  answers: Record<string, VivaAnswerEntry>;
+  violation_logs: VivaViolationLog[];
 }
