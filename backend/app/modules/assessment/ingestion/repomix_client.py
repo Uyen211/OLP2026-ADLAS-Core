@@ -5,6 +5,7 @@
 
 import logging
 import os
+import re
 from typing import Any, Dict, Optional
 import httpx
 from app.core.config import settings
@@ -15,7 +16,7 @@ logger = logging.getLogger(__name__)
 class RepomixClient:
     """Client for packaging source code repositories via Repomix Service (port 3000)."""
 
-    def __init__(self, base_url: Optional[str] = None, timeout: float = 20.0):
+    def __init__(self, base_url: Optional[str] = None, timeout: float = 45.0):
         self.base_url = (base_url or settings.REPOMIX_SERVICE_URL).rstrip("/")
         self.timeout = timeout
 
@@ -23,11 +24,11 @@ class RepomixClient:
         self,
         source_path: Optional[str] = None,
         git_url: Optional[str] = None,
-        max_tokens: int = 2000
+        max_tokens: int = 45000
     ) -> Dict[str, Any]:
         """
-        Request the Repomix container service to package source code into token-budgeted XML.
-        Falls back to in-process python AST/directory scanner if service is temporarily unreachable.
+        Request the Repomix container service to package source code into AST-compressed XML.
+        Falls back to in-process python directory scanner if service is temporarily unreachable.
         """
         payload = {
             "source_path": source_path,
@@ -41,6 +42,10 @@ class RepomixClient:
                 if response.status_code == 200:
                     data = response.json()
                     data["source"] = "repomix_container_live"
+                    if data.get("packed_xml"):
+                        data["packed_xml"] = self._trim_xml_keeping_active_files(
+                            data["packed_xml"], max_tokens=max_tokens
+                        )
                     return data
                 else:
                     logger.warning(
@@ -54,11 +59,35 @@ class RepomixClient:
         # Resilient local fallback scanner
         return self._local_fallback_pack(source_path=source_path, git_url=git_url, max_tokens=max_tokens)
 
+    @staticmethod
+    def _trim_xml_keeping_active_files(raw_xml: str, max_tokens: int) -> str:
+        """Keep <directory_structure> and prioritize most-active files at the end of Repomix output."""
+        char_limit = max_tokens * 4
+        if len(raw_xml) <= char_limit:
+            return raw_xml
+
+        dir_match = re.search(r"<directory_structure>[\s\S]*?</directory_structure>", raw_xml, re.IGNORECASE)
+        dir_block = (dir_match.group(0) + "\n\n") if dir_match else ""
+        file_blocks = re.findall(r'<file\s+path="[^"]+">[\s\S]*?</file>', raw_xml)
+        if not file_blocks:
+            return raw_xml[:char_limit]
+
+        selected = []
+        used = len(dir_block) + 32
+        for block in reversed(file_blocks):
+            if used + len(block) + 2 <= char_limit:
+                selected.insert(0, block)
+                used += len(block) + 2
+            elif not selected:
+                selected.insert(0, block[: max(500, char_limit - used)] + "\n</file>")
+                break
+        return f"{dir_block}<files>\n" + "\n".join(selected) + "\n</files>"
+
     def _local_fallback_pack(
         self,
         source_path: Optional[str] = None,
         git_url: Optional[str] = None,
-        max_tokens: int = 2000
+        max_tokens: int = 45000
     ) -> Dict[str, Any]:
         """In-process lightweight fallback packer to ensure high availability."""
         import shutil
