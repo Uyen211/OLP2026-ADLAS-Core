@@ -330,3 +330,18 @@ async def test_br_lo_01_hook_blocks_lo_deletion(mock_db):
     # Test via registry
     is_in_use = await lo_reference_registry.is_lo_referenced(mock_db, test_lo_id)
     assert is_in_use is True
+
+
+def test_router_is_admin_resolves_from_system_role():
+    """Verify router _is_admin helper checks User.system_role instead of non-existent is_admin attribute."""
+    from app.modules.identity.dependencies import CurrentUser
+    from app.modules.learning.router import _is_admin
+    from app.modules.system.models import User
+
+    admin_user = User(id=uuid.uuid4(), email="admin@adlas.edu.vn", full_name="Admin", password_hash="x", system_role="ADMIN")
+    teacher_user = User(id=uuid.uuid4(), email="teacher@adlas.edu.vn", full_name="Teacher", password_hash="x", system_role="USER")
+    none_role_user = User(id=uuid.uuid4(), email="user@adlas.edu.vn", full_name="User", password_hash="x", system_role=None)
+
+    assert _is_admin(CurrentUser(user=admin_user, token="tok")) is True
+    assert _is_admin(CurrentUser(user=teacher_user, token="tok")) is False
+    assert _is_admin(CurrentUser(user=none_role_user, token="tok")) is False

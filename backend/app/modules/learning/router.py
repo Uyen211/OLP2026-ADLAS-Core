@@ -33,6 +33,11 @@ router = APIRouter(
 )
 
 
+def _is_admin(current_user: CurrentUser) -> bool:
+    """Resolve system admin privileges safely from User.system_role."""
+    return (getattr(current_user.user, "system_role", "") or "").upper() == "ADMIN"
+
+
 # -----------------------------------------------------------------------------
 # Module Routes
 # -----------------------------------------------------------------------------
@@ -47,7 +52,7 @@ async def list_course_modules(
     return await service.list_modules(
         course_id=course_id,
         user_id=current_user.user.id,
-        is_admin=current_user.user.is_admin,
+        is_admin=_is_admin(current_user),
     )
 
 
@@ -64,7 +69,7 @@ async def create_course_module(
         course_id=course_id,
         payload=payload,
         user_id=current_user.user.id,
-        is_admin=current_user.user.is_admin,
+        is_admin=_is_admin(current_user),
     )
 
 
@@ -81,7 +86,7 @@ async def reorder_course_modules(
         course_id=course_id,
         ordered_ids=payload.module_ids,
         user_id=current_user.user.id,
-        is_admin=current_user.user.is_admin,
+        is_admin=_is_admin(current_user),
     )
 
 
@@ -98,7 +103,7 @@ async def get_module_detail(
         course_id=course_id,
         module_id=module_id,
         user_id=current_user.user.id,
-        is_admin=current_user.user.is_admin,
+        is_admin=_is_admin(current_user),
     )
 
 
@@ -117,7 +122,7 @@ async def update_module_metadata(
         module_id=module_id,
         payload=payload,
         user_id=current_user.user.id,
-        is_admin=current_user.user.is_admin,
+        is_admin=_is_admin(current_user),
     )
 
 
@@ -134,7 +139,7 @@ async def delete_course_module(
         course_id=course_id,
         module_id=module_id,
         user_id=current_user.user.id,
-        is_admin=current_user.user.is_admin,
+        is_admin=_is_admin(current_user),
     )
 
 
@@ -153,7 +158,7 @@ async def toggle_module_publish_status(
         module_id=module_id,
         is_published=payload.is_published,
         user_id=current_user.user.id,
-        is_admin=current_user.user.is_admin,
+        is_admin=_is_admin(current_user),
     )
 
 
@@ -175,7 +180,7 @@ async def create_learning_material(
         module_id=module_id,
         payload=payload,
         user_id=current_user.user.id,
-        is_admin=current_user.user.is_admin,
+        is_admin=_is_admin(current_user),
     )
 
 
@@ -194,7 +199,7 @@ async def upload_material_file(
         module_id=module_id,
         file=file,
         user_id=current_user.user.id,
-        is_admin=current_user.user.is_admin,
+        is_admin=_is_admin(current_user),
     )
 
 
@@ -211,7 +216,7 @@ async def get_material_detail(
         course_id=course_id,
         material_id=material_id,
         user_id=current_user.user.id,
-        is_admin=current_user.user.is_admin,
+        is_admin=_is_admin(current_user),
     )
 
 
@@ -228,7 +233,7 @@ async def download_material_file(
         course_id=course_id,
         material_id=material_id,
         user_id=current_user.user.id,
-        is_admin=current_user.user.is_admin,
+        is_admin=_is_admin(current_user),
     )
     return FileResponse(
         path=file_path,
@@ -251,7 +256,7 @@ async def update_material_metadata(
         material_id=material_id,
         payload=payload,
         user_id=current_user.user.id,
-        is_admin=current_user.user.is_admin,
+        is_admin=_is_admin(current_user),
     )
 
 
@@ -268,7 +273,7 @@ async def delete_learning_material(
         course_id=course_id,
         material_id=material_id,
         user_id=current_user.user.id,
-        is_admin=current_user.user.is_admin,
+        is_admin=_is_admin(current_user),
     )
 
 
@@ -287,5 +292,5 @@ async def toggle_material_publish_status(
         material_id=material_id,
         is_published=payload.is_published,
         user_id=current_user.user.id,
-        is_admin=current_user.user.is_admin,
+        is_admin=_is_admin(current_user),
     )
