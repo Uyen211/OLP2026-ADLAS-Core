@@ -129,3 +129,17 @@ export interface CheckpointSubmitResult {
   rewind_seconds: number;
   message: string;
 }
+
+export interface MaterialPageItem {
+  index: number;
+  title: string;
+  content_lines: string[];
+  image_url?: string | null;
+}
+
+export interface MaterialStructuredContent {
+  material_id: string;
+  content_kind: "PDF_PAGES" | "SLIDE_DECK" | "DOC_SECTIONS" | "UNSUPPORTED";
+  total_items: number;
+  items: MaterialPageItem[];
+}

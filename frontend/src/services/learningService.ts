@@ -11,6 +11,7 @@ import type {
   LearningModule,
   MaterialCheckpoint,
   MaterialCreatePayload,
+  MaterialStructuredContent,
   MaterialUpdatePayload,
   MaterialUploadResult,
   ModuleCreatePayload,
@@ -139,6 +140,25 @@ export const learningService = {
     materialId: string
   ): Promise<{ blob: Blob; contentType: string }> {
     return httpFetchBlob(`/courses/${courseId}/learning/materials/${materialId}/preview`);
+  },
+
+  getMaterialStructuredContent(
+    courseId: string,
+    materialId: string
+  ): Promise<MaterialStructuredContent> {
+    return httpRequest<MaterialStructuredContent>(
+      `/courses/${courseId}/learning/materials/${materialId}/structured-content`
+    );
+  },
+
+  fetchPageImageBlob(
+    courseId: string,
+    materialId: string,
+    pageIndex: number
+  ): Promise<{ blob: Blob; contentType: string }> {
+    return httpFetchBlob(
+      `/courses/${courseId}/learning/materials/${materialId}/pages/${pageIndex}/image`
+    );
   },
 
   completeMaterial(courseId: string, materialId: string): Promise<{ status: string; material_id: string }> {
