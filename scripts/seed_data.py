@@ -8,6 +8,8 @@ import os
 import sys
 
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+if REPO_ROOT not in sys.path:
+    sys.path.insert(0, REPO_ROOT)
 BACKEND_DIR = os.path.join(REPO_ROOT, "backend")
 if BACKEND_DIR not in sys.path:
     sys.path.insert(0, BACKEND_DIR)
@@ -84,7 +86,10 @@ def seed_database() -> None:
     asyncio.run(_reset_database(db_url))
 
     # 2. Invoke unified learning demo seed
-    from scripts.seed_learning_demo import seed_learning_demo
+    try:
+        from scripts.seed_learning_demo import seed_learning_demo
+    except ModuleNotFoundError:
+        from seed_learning_demo import seed_learning_demo
 
     print("\n" + "=" * 65)
     print(" ADLAS Platform - Unified Demo Data Orchestrator")

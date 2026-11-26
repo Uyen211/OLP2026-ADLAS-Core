@@ -4,33 +4,50 @@
 """Unified idempotent seed generator for 3 consistent courses covering TV1, TV2, and TV3."""
 
 import asyncio
-from datetime import date, datetime, timedelta, timezone
 import os
 import subprocess
 import sys
 import uuid
+from datetime import UTC, date, datetime, timedelta
 
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+if REPO_ROOT not in sys.path:
+    sys.path.insert(0, REPO_ROOT)
 BACKEND_DIR = os.path.join(REPO_ROOT, "backend")
 if BACKEND_DIR not in sys.path:
     sys.path.insert(0, BACKEND_DIR)
 
-from sqlalchemy import delete, select  # noqa: E402
-from app.core.database import AsyncSessionLocal  # noqa: E402
-from app.core.security import hash_password  # noqa: E402
-from app.modules.assessment.models import (  # noqa: E402
+from dotenv import load_dotenv
+
+env_path = os.path.join(REPO_ROOT, ".env")
+if os.path.exists(env_path):
+    load_dotenv(env_path)
+
+db_url = os.getenv("DATABASE_URL", "")
+if "@postgres:" in db_url and not os.path.exists("/.dockerenv"):
+    os.environ["DATABASE_URL"] = db_url.replace("@postgres:", "@localhost:")
+
+from app.core.database import AsyncSessionLocal
+from app.core.security import hash_password
+from app.modules.assessment.models import (
     Assignment,
     AssignmentSubmission,
     Rubric,
     RubricCriteria,
     VivaTranscript,
 )
-from app.modules.course.enums import BloomLevel, ContextualRole, CourseStatus, EnrollmentStatus  # noqa: E402
-from app.modules.course.join_code import generate_join_code  # noqa: E402
-from app.modules.course.models import Course, CourseEnrollment, LearningObjective  # noqa: E402
-from app.modules.identity.repository import IdentityRepository  # noqa: E402
-from app.modules.learning.enums import MaterialType  # noqa: E402
-from app.modules.learning.models import LearningMaterial, LearningModule  # noqa: E402
+from app.modules.course.enums import (
+    BloomLevel,
+    ContextualRole,
+    CourseStatus,
+    EnrollmentStatus,
+)
+from app.modules.course.join_code import generate_join_code
+from app.modules.course.models import Course, CourseEnrollment, LearningObjective
+from app.modules.identity.repository import IdentityRepository
+from app.modules.learning.enums import MaterialType
+from app.modules.learning.models import LearningMaterial, LearningModule
+from sqlalchemy import delete, select
 
 SEED_NS = uuid.UUID("a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d")
 
@@ -145,7 +162,7 @@ def _sync_to_docker_volume(materials_dir: str) -> None:
         if check.returncode == 0 and check.stdout.strip() == "true":
             subprocess.run(["docker", "exec", "adlas-backend", "mkdir", "-p", "/app/uploads/materials"], check=True, timeout=5)
             subprocess.run(["docker", "cp", f"{materials_dir}/.", "adlas-backend:/app/uploads/materials/"], check=True, timeout=15)
-            print(f"[SEED] Synced real material files to adlas-backend:/app/uploads/materials/")
+            print("[SEED] Synced real material files to adlas-backend:/app/uploads/materials/")
     except Exception as exc:
         print(f"[SEED] Note: Could not auto-sync to Docker container ({exc}).")
 
@@ -356,7 +373,7 @@ async def _cleanup_duplicate_template(db) -> None:
 
 async def _upsert_course_with_data(db, spec: dict, users: dict, file_paths: dict[str, str]) -> None:
     """Idempotently upsert a single course along with LOs, enrollments, modules, materials, and assessment data."""
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     teacher = users["teacher"]
     student1 = users["student1"]
     student2 = users["student2"]
