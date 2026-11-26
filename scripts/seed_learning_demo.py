@@ -46,7 +46,13 @@ from app.modules.course.join_code import generate_join_code
 from app.modules.course.models import Course, CourseEnrollment, LearningObjective
 from app.modules.identity.repository import IdentityRepository
 from app.modules.learning.enums import MaterialType
-from app.modules.learning.models import LearningMaterial, LearningModule
+from app.modules.learning.models import (
+    LearningMaterial,
+    LearningModule,
+    MaterialCheckpoint,
+    StudentCheckpointAttempt,
+)
+from scripts.synthetic_video import generate_synthetic_mp4
 from sqlalchemy import delete, select
 
 SEED_NS = uuid.UUID("a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d")
@@ -320,6 +326,17 @@ def _ensure_demo_files() -> dict[str, str]:
                 f.write(content)
         paths[fname] = f"materials/{fname}"
 
+    video_specs = {
+        "it4409_ch2_hnsw_demo.mp4": ("IT4409: HNSW Indexing Demo", 45),
+        "it3080_ch1_tcp_demo.mp4": ("IT3080: TCP/UDP Handshake Demo", 40),
+        "it4010_ch2_broker_demo.mp4": ("IT4010: Event-Driven Demo", 40),
+    }
+    for fname, (v_title, v_dur) in video_specs.items():
+        fpath = os.path.join(materials_dir, fname)
+        if not os.path.exists(fpath) or os.path.getsize(fpath) < 100_000:
+            generate_synthetic_mp4(fpath, title=v_title, duration_seconds=v_dur)
+        paths[fname] = f"materials/{fname}"
+
     _sync_to_docker_volume(materials_dir)
     return paths
 
@@ -504,23 +521,74 @@ async def _upsert_course_with_data(db, spec: dict, users: dict, file_paths: dict
             if existing_mat is None:
                 lo_ref = lo_map.get(mat_spec["lo"]).id if mat_spec.get("lo") else None
                 f_url = mat_spec.get("url") or file_paths.get(mat_spec.get("file", ""), "")
-                db.add(
-                    LearningMaterial(
-                        id=mat_id,
-                        module_id=mod.id,
-                        lo_id=lo_ref,
-                        title=mat_spec["title"],
-                        material_type=mat_spec["type"].value,
-                        file_url=f_url,
-                        is_mandatory=mat_spec.get("mandatory", True),
-                        est_duration_minutes=mat_spec.get("duration", 30),
-                        is_published=mat_spec.get("is_published", True),
-                    )
+                mat_obj = LearningMaterial(
+                    id=mat_id,
+                    module_id=mod.id,
+                    lo_id=lo_ref,
+                    title=mat_spec["title"],
+                    material_type=mat_spec["type"].value,
+                    file_url=f_url,
+                    is_mandatory=mat_spec.get("mandatory", True),
+                    est_duration_minutes=mat_spec.get("duration", 30),
+                    is_published=mat_spec.get("is_published", True),
                 )
+                db.add(mat_obj)
             else:
+                mat_obj = existing_mat
                 f_url = mat_spec.get("url") or file_paths.get(mat_spec.get("file", ""), "")
                 if f_url:
-                    existing_mat.file_url = f_url
+                    mat_obj.file_url = f_url
+            await db.flush()
+
+            # Checkpoints inside material (Phase 2 T2-P-M2-03)
+            for chk_idx, chk_spec in enumerate(mat_spec.get("checkpoints", [])):
+                chk_id = _det_uuid(f"checkpoint:{spec['code']}:{mat_spec['key']}:{chk_idx}")
+                existing_chk = (
+                    await db.execute(select(MaterialCheckpoint).where(MaterialCheckpoint.id == chk_id))
+                ).scalar_one_or_none()
+                if existing_chk is None:
+                    chk_obj = MaterialCheckpoint(
+                        id=chk_id,
+                        material_id=mat_obj.id,
+                        lo_id=mat_obj.lo_id,
+                        stop_time_seconds=chk_spec.get("stop_time_seconds"),
+                        section_index=chk_spec.get("section_index"),
+                        question_text=chk_spec["question"],
+                        question_type="MULTIPLE_CHOICE",
+                        options=chk_spec["options"],
+                        correct_option=chk_spec["correct"],
+                        expected_concept=chk_spec.get("concept", chk_spec["question"][:120]),
+                        is_blocking=chk_spec.get("is_blocking", True),
+                        time_limit_seconds=chk_spec.get("time_limit", 10),
+                        rewind_seconds=chk_spec.get("rewind", 15),
+                    )
+                    db.add(chk_obj)
+                    await db.flush()
+                else:
+                    chk_obj = existing_chk
+
+                # Seed partial progress for student2 on IT4409 video's first checkpoint
+                if chk_spec.get("seed_student2_pass") and "student2" in users:
+                    s2_id = users["student2"].id
+                    existing_att = (
+                        await db.execute(
+                            select(StudentCheckpointAttempt).where(
+                                StudentCheckpointAttempt.user_id == s2_id,
+                                StudentCheckpointAttempt.checkpoint_id == chk_obj.id,
+                            )
+                        )
+                    ).scalar_one_or_none()
+                    if existing_att is None:
+                        db.add(
+                            StudentCheckpointAttempt(
+                                user_id=s2_id,
+                                checkpoint_id=chk_obj.id,
+                                selected_option=chk_spec["correct"],
+                                is_correct=True,
+                                attempt_count=1,
+                                passed_at=now,
+                            )
+                        )
     await db.flush()
 
     # 5. Assessment, Rubrics & Submissions (TV1 & TV3)
@@ -654,8 +722,62 @@ COURSE_SPECS = [
                 "title": "Chương 1: Tổng quan Kiến trúc Hệ thống & RAG Tri thức",
                 "is_published": True,
                 "materials": [
-                    {"key": "mat1", "title": "Slide Bài giảng: Kiến trúc DX-OS Open-Core và 8 Bounded Contexts", "type": MaterialType.SLIDE, "file": "it4409_ch1_architecture.pptx", "lo": "LO-01", "duration": 45},
-                    {"key": "mat2", "title": "Tài liệu đọc: Hướng dẫn RAG và Vector Database trong Giáo dục Đại học", "type": MaterialType.PDF, "file": "it4409_ch1_rag_guide.pdf", "lo": "LO-01", "duration": 30},
+                    {
+                        "key": "mat1",
+                        "title": "Slide Bài giảng: Kiến trúc DX-OS Open-Core và 8 Bounded Contexts",
+                        "type": MaterialType.SLIDE,
+                        "file": "it4409_ch1_architecture.pptx",
+                        "lo": "LO-01",
+                        "duration": 45,
+                        "checkpoints": [
+                            {
+                                "section_index": 1,
+                                "question": "Trong kiến trúc DX-OS 2 tầng, Tầng 1 (Headless PaaS) đảm nhiệm vai trò gì?",
+                                "options": {
+                                    "A": "Cung cấp dịch vụ lõi dùng chung (Auth, Gateway, Storage, Event Bus)",
+                                    "B": "Chỉ hiển thị giao diện bài tập cho sinh viên",
+                                    "C": "Thay thế hoàn toàn cơ sở dữ liệu quan hệ",
+                                    "D": "Chấm điểm bài thi tự luận thủ công",
+                                },
+                                "correct": "A",
+                                "is_blocking": True,
+                            }
+                        ],
+                    },
+                    {
+                        "key": "mat2",
+                        "title": "Tài liệu đọc: Hướng dẫn RAG và Vector Database trong Giáo dục Đại học",
+                        "type": MaterialType.PDF,
+                        "file": "it4409_ch1_rag_guide.pdf",
+                        "lo": "LO-01",
+                        "duration": 30,
+                        "checkpoints": [
+                            {
+                                "section_index": 1,
+                                "question": "Mục tiêu chính của kỹ thuật RAG (Retrieval-Augmented Generation) là gì?",
+                                "options": {
+                                    "A": "Tăng kích thước tệp PDF lên nhiều lần",
+                                    "B": "Truy xuất ngữ cảnh học liệu thật để giảm ảo giác của LLM",
+                                    "C": "Xóa bỏ hoàn toàn nhu cầu dùng cơ sở dữ liệu",
+                                    "D": "Tự động tăng tốc độ mạng phòng thi",
+                                },
+                                "correct": "B",
+                                "is_blocking": True,
+                            },
+                            {
+                                "section_index": 2,
+                                "question": "Hệ thống ADLAS lưu trữ vector embedding ở bảng và extension nào?",
+                                "options": {
+                                    "A": "MongoDB Atlas Search",
+                                    "B": "Pinecone Cloud",
+                                    "C": "PostgreSQL 16 với pgvector HNSW",
+                                    "D": "Redis JSON",
+                                },
+                                "correct": "C",
+                                "is_blocking": True,
+                            },
+                        ],
+                    },
                 ],
             },
             {
@@ -664,8 +786,82 @@ COURSE_SPECS = [
                 "prereq": "m1",
                 "is_published": True,
                 "materials": [
-                    {"key": "mat3", "title": "Video: Trực quan hóa HNSW Indexing với m=16 và ef_construction=64", "type": MaterialType.VIDEO, "url": "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4", "lo": "LO-02", "duration": 25},
-                    {"key": "mat4", "title": "Cẩm nang: Tối ưu truy vấn Cosine Similarity trên PostgreSQL 16", "type": MaterialType.DOCUMENT, "file": "it4409_ch2_pgvector_handbook.md", "lo": "LO-02", "mandatory": False, "duration": 20},
+                    {
+                        "key": "mat3",
+                        "title": "Video: Trực quan hóa HNSW Indexing với m=16 và ef_construction=64",
+                        "type": MaterialType.VIDEO,
+                        "file": "it4409_ch2_hnsw_demo.mp4",
+                        "lo": "LO-02",
+                        "duration": 25,
+                        "checkpoints": [
+                            {
+                                "stop_time_seconds": 8,
+                                "question": "Tham số m=16 trong chỉ mục HNSW đại diện cho điều gì?",
+                                "options": {
+                                    "A": "Số lượng kết nối tối đa của mỗi node trong đồ thị đa tầng",
+                                    "B": "Kích thước tối đa của tệp video (MB)",
+                                    "C": "Số lượng bảng trong cơ sở dữ liệu",
+                                    "D": "Thời gian chờ tối đa khi truy vấn",
+                                },
+                                "correct": "A",
+                                "is_blocking": True,
+                                "time_limit": 10,
+                                "rewind": 15,
+                                "seed_student2_pass": True,
+                            },
+                            {
+                                "stop_time_seconds": 22,
+                                "question": "Toán tử nào trong pgvector dùng để tính khoảng cách Cosine?",
+                                "options": {
+                                    "A": "<->",
+                                    "B": "<=>",
+                                    "C": "<#>",
+                                    "D": "===",
+                                },
+                                "correct": "B",
+                                "is_blocking": True,
+                                "time_limit": 10,
+                                "rewind": 15,
+                            },
+                            {
+                                "stop_time_seconds": 35,
+                                "question": "[Tùy chọn] Bạn thấy tốc độ truy vấn HNSW dưới 15ms có đáp ứng tốt cho lớp học 100 sinh viên không?",
+                                "options": {
+                                    "A": "Có, đáp ứng tốt thời gian thực",
+                                    "B": "Cần thêm bộ nhớ đệm",
+                                    "C": "Chưa rõ",
+                                    "D": "Không cần thiết",
+                                },
+                                "correct": "A",
+                                "is_blocking": False,
+                                "time_limit": 15,
+                                "rewind": 0,
+                            },
+                        ],
+                    },
+                    {
+                        "key": "mat4",
+                        "title": "Cẩm nang: Tối ưu truy vấn Cosine Similarity trên PostgreSQL 16",
+                        "type": MaterialType.DOCUMENT,
+                        "file": "it4409_ch2_pgvector_handbook.md",
+                        "lo": "LO-02",
+                        "mandatory": False,
+                        "duration": 20,
+                        "checkpoints": [
+                            {
+                                "section_index": 1,
+                                "question": "Học liệu tham khảo (is_mandatory = FALSE) có ảnh hưởng đến điểm chuyên cần nếu chưa đọc không?",
+                                "options": {
+                                    "A": "Có, bị trừ 10% điểm",
+                                    "B": "Không, chỉ tài liệu Bắt buộc mới tính vào chuyên cần",
+                                    "C": "Tùy thuộc vào số lần tải xuống",
+                                    "D": "Khóa toàn bộ các tuần sau",
+                                },
+                                "correct": "B",
+                                "is_blocking": False,
+                            }
+                        ],
+                    },
                 ],
             },
             {
@@ -716,7 +912,40 @@ COURSE_SPECS = [
                 "is_published": True,
                 "materials": [
                     {"key": "mat1", "title": "Slide: Phân tích chi tiết tầng Giao vận (TCP/UDP)", "type": MaterialType.SLIDE, "file": "it3080_ch1_osi_tcpip.pptx", "lo": "LO-01", "duration": 45},
-                    {"key": "mat2", "title": "Tài liệu tham khảo: Chuẩn giao thức RFC 791 & 793", "type": MaterialType.PDF, "file": "it3080_ch1_rfc_notes.pdf", "lo": "LO-01", "duration": 35},
+                    {
+                        "key": "mat2",
+                        "title": "Tài liệu tham khảo: Chuẩn giao thức RFC 791 & 793",
+                        "type": MaterialType.PDF,
+                        "file": "it3080_ch1_rfc_notes.pdf",
+                        "lo": "LO-01",
+                        "duration": 35,
+                        "checkpoints": [
+                            {
+                                "section_index": 1,
+                                "question": "Bắt tay 3 bước (3-way handshake) của TCP sử dụng chuỗi cờ nào?",
+                                "options": {"A": "SYN -> SYN-ACK -> ACK", "B": "ACK -> FIN -> RST", "C": "GET -> POST -> OK", "D": "PING -> PONG -> ACK"},
+                                "correct": "A",
+                                "is_blocking": True,
+                            }
+                        ],
+                    },
+                    {
+                        "key": "mat_vid",
+                        "title": "Video: Minh họa bắt tay 3 bước TCP & Kiểm soát tắc nghẽn",
+                        "type": MaterialType.VIDEO,
+                        "file": "it3080_ch1_tcp_demo.mp4",
+                        "lo": "LO-01",
+                        "duration": 20,
+                        "checkpoints": [
+                            {
+                                "stop_time_seconds": 10,
+                                "question": "Giao thức nào đảm bảo truyền tin cậy có thứ tự gói tin?",
+                                "options": {"A": "UDP", "B": "TCP", "C": "ICMP", "D": "ARP"},
+                                "correct": "B",
+                                "is_blocking": True,
+                            }
+                        ],
+                    },
                 ],
             },
             {
@@ -777,6 +1006,23 @@ COURSE_SPECS = [
                 "is_published": True,
                 "materials": [
                     {"key": "mat3", "title": "Cẩm nang: Giao tiếp bất đồng bộ với Kafka/RabbitMQ", "type": MaterialType.DOCUMENT, "file": "it4010_ch2_microservices.md", "lo": "LO-02", "duration": 35},
+                    {
+                        "key": "mat_vid",
+                        "title": "Video: Thiết kế Transactional Outbox Pattern cho Microservices",
+                        "type": MaterialType.VIDEO,
+                        "file": "it4010_ch2_broker_demo.mp4",
+                        "lo": "LO-02",
+                        "duration": 20,
+                        "checkpoints": [
+                            {
+                                "stop_time_seconds": 10,
+                                "question": "Transactional Outbox giúp giải quyết vấn đề gì trong hệ phân tán?",
+                                "options": {"A": "Đảm bảo không mất sự kiện khi ghi DB và gửi Message Broker", "B": "Tăng độ phân giải màn hình", "C": "Mã hóa mật khẩu người dùng", "D": "Nén tệp video"},
+                                "correct": "A",
+                                "is_blocking": True,
+                            }
+                        ],
+                    },
                 ],
             },
             {
