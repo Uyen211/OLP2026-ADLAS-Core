@@ -3,12 +3,18 @@
 
 """Asynchronous database repository for Learning Modules, Materials, and LO Reference checks."""
 
-from typing import List, Optional
+from datetime import datetime, timezone
+from typing import Dict, List, Optional
 import uuid
 from sqlalchemy import func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
-from app.modules.learning.models import LearningMaterial, LearningModule
+from app.modules.learning.models import (
+    LearningMaterial,
+    LearningModule,
+    MaterialCheckpoint,
+    StudentCheckpointAttempt,
+)
 
 
 class LearningRepository:
@@ -196,3 +202,120 @@ class LearningRepository:
         """)
         await self.db.execute(stmt, {"user_id": str(user_id), "material_id": str(material_id)})
         await self.db.flush()
+
+    # -------------------------------------------------------------------------
+    # Material Checkpoints (Task T2-P-M2-03)
+    # -------------------------------------------------------------------------
+    async def get_checkpoint(self, checkpoint_id: uuid.UUID) -> Optional[MaterialCheckpoint]:
+        """Fetch checkpoint by id."""
+        stmt = select(MaterialCheckpoint).where(MaterialCheckpoint.id == checkpoint_id)
+        result = await self.db.execute(stmt)
+        return result.scalar_one_or_none()
+
+    async def list_checkpoints(self, material_id: uuid.UUID) -> List[MaterialCheckpoint]:
+        """List all checkpoints for a learning material ordered by time/section."""
+        stmt = (
+            select(MaterialCheckpoint)
+            .where(MaterialCheckpoint.material_id == material_id)
+            .order_by(MaterialCheckpoint.stop_time_seconds.asc().nulls_last(), MaterialCheckpoint.section_index.asc().nulls_last())
+        )
+        result = await self.db.execute(stmt)
+        return list(result.scalars().all())
+
+    async def create_checkpoint(self, checkpoint: MaterialCheckpoint) -> MaterialCheckpoint:
+        """Insert a new checkpoint."""
+        self.db.add(checkpoint)
+        await self.db.flush()
+        return checkpoint
+
+    async def update_checkpoint(self, checkpoint: MaterialCheckpoint) -> MaterialCheckpoint:
+        """Update an existing checkpoint."""
+        await self.db.flush()
+        return checkpoint
+
+    async def delete_checkpoint(self, checkpoint: MaterialCheckpoint) -> None:
+        """Delete a checkpoint."""
+        await self.db.delete(checkpoint)
+        await self.db.flush()
+
+    async def get_student_attempts_for_checkpoints(
+        self,
+        checkpoint_ids: List[uuid.UUID],
+        user_id: uuid.UUID,
+    ) -> Dict[uuid.UUID, bool]:
+        """Return dict of checkpoint_id -> is_passed for a student."""
+        if not checkpoint_ids:
+            return {}
+        stmt = select(StudentCheckpointAttempt.checkpoint_id, StudentCheckpointAttempt.is_correct).where(
+            StudentCheckpointAttempt.user_id == user_id,
+            StudentCheckpointAttempt.checkpoint_id.in_(checkpoint_ids),
+        )
+        result = await self.db.execute(stmt)
+        return {row[0]: row[1] for row in result.fetchall()}
+
+    async def upsert_checkpoint_attempt(
+        self,
+        user_id: uuid.UUID,
+        checkpoint_id: uuid.UUID,
+        selected_option: str,
+        is_correct: bool,
+    ) -> StudentCheckpointAttempt:
+        """Record student attempt and preserve pass status if previously passed."""
+        stmt = select(StudentCheckpointAttempt).where(
+            StudentCheckpointAttempt.user_id == user_id,
+            StudentCheckpointAttempt.checkpoint_id == checkpoint_id,
+        )
+        result = await self.db.execute(stmt)
+        attempt = result.scalar_one_or_none()
+
+        now = datetime.now(timezone.utc)
+        if attempt:
+            attempt.attempt_count += 1
+            attempt.selected_option = selected_option
+            attempt.updated_at = now
+            if is_correct or attempt.is_correct:
+                attempt.is_correct = True
+                if not attempt.passed_at:
+                    attempt.passed_at = now
+        else:
+            attempt = StudentCheckpointAttempt(
+                user_id=user_id,
+                checkpoint_id=checkpoint_id,
+                selected_option=selected_option,
+                is_correct=is_correct,
+                attempt_count=1,
+                passed_at=now if is_correct else None,
+                updated_at=now,
+            )
+            self.db.add(attempt)
+
+        await self.db.flush()
+        return attempt
+
+    async def get_unpassed_blocking_checkpoints(
+        self,
+        material_id: uuid.UUID,
+        user_id: uuid.UUID,
+    ) -> List[uuid.UUID]:
+        """Return list of blocking checkpoint IDs that student has not yet passed."""
+        # Find all blocking checkpoints for this material
+        chk_stmt = select(MaterialCheckpoint.id).where(
+            MaterialCheckpoint.material_id == material_id,
+            MaterialCheckpoint.is_blocking.is_(True),
+        )
+        chk_res = await self.db.execute(chk_stmt)
+        blocking_ids = [row[0] for row in chk_res.fetchall()]
+
+        if not blocking_ids:
+            return []
+
+        # Find which blocking checkpoints have is_correct = True
+        pass_stmt = select(StudentCheckpointAttempt.checkpoint_id).where(
+            StudentCheckpointAttempt.user_id == user_id,
+            StudentCheckpointAttempt.checkpoint_id.in_(blocking_ids),
+            StudentCheckpointAttempt.is_correct.is_(True),
+        )
+        pass_res = await self.db.execute(pass_stmt)
+        passed_ids = set(row[0] for row in pass_res.fetchall())
+
+        return [cid for cid in blocking_ids if cid not in passed_ids]

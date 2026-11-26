@@ -72,3 +72,36 @@ class ModuleLockedException(ADLASException):
             detail=detail,
             status_code=status.HTTP_403_FORBIDDEN,
         )
+
+
+class CheckpointNotFoundException(ADLASException):
+    """Checkpoint does not exist within the specified material."""
+
+    def __init__(self, detail: str = "Không tìm thấy điểm dừng kiểm tra yêu cầu."):
+        super().__init__(
+            code="E-CHK-NOT-FOUND",
+            detail=detail,
+            status_code=status.HTTP_404_NOT_FOUND,
+        )
+
+
+class CheckpointSpacingException(ADLASException):
+    """Video checkpoints must be at least 5 seconds apart."""
+
+    def __init__(self, detail: str = "Khoảng cách giữa hai điểm dừng video phải tối thiểu 5 giây."):
+        super().__init__(
+            code="E-CHK-SPACING",
+            detail=detail,
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+        )
+
+
+class UncompletedCheckpointsException(ADLASException):
+    """Material has uncompleted blocking checkpoints preventing completion."""
+
+    def __init__(self, detail: str = "Cần hoàn thành tất cả các mốc kiểm tra nhận thức bắt buộc trước khi kết thúc học liệu."):
+        super().__init__(
+            code="E-CHK-UNCOMPLETED",
+            detail=detail,
+            status_code=status.HTTP_409_CONFLICT,
+        )

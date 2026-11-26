@@ -12,8 +12,9 @@ from sqlalchemy import (
     ForeignKey,
     Integer,
     String,
+    Text,
 )
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import relationship
 from app.core.database import Base
 import app.modules.course.models  # noqa: F401 - ensure course.courses and course.learning_objectives are in metadata
@@ -89,3 +90,86 @@ class LearningMaterial(Base):
 
     # Relationships
     module = relationship("LearningModule", back_populates="materials")
+    checkpoints = relationship(
+        "MaterialCheckpoint",
+        back_populates="material",
+        cascade="all, delete-orphan",
+        order_by="MaterialCheckpoint.stop_time_seconds, MaterialCheckpoint.section_index",
+    )
+
+
+class MaterialCheckpoint(Base):
+    """Interactive quiz checkpoint on video timeline or document section in learning.material_checkpoints."""
+
+    __tablename__ = "material_checkpoints"
+    __table_args__ = {"schema": "learning"}
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    material_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("learning.learning_materials.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    lo_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("course.learning_objectives.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    stop_time_seconds = Column(Integer, nullable=True)
+    section_index = Column(Integer, nullable=True)
+    question_text = Column(Text, nullable=False)
+    question_type = Column(String(30), nullable=False, default="MULTIPLE_CHOICE")
+    options = Column(JSONB, nullable=True)
+    correct_option = Column(String(10), nullable=True)
+    expected_concept = Column(Text, nullable=True)
+    is_blocking = Column(Boolean, nullable=False, default=True)
+    time_limit_seconds = Column(Integer, nullable=False, default=10)
+    rewind_seconds = Column(Integer, nullable=False, default=15)
+    created_at = Column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.now(timezone.utc),
+    )
+
+    # Relationships
+    material = relationship("LearningMaterial", back_populates="checkpoints")
+    attempts = relationship(
+        "StudentCheckpointAttempt",
+        back_populates="checkpoint",
+        cascade="all, delete-orphan",
+    )
+
+
+class StudentCheckpointAttempt(Base):
+    """Student answer attempt and pass status per checkpoint in learning.student_checkpoint_attempts."""
+
+    __tablename__ = "student_checkpoint_attempts"
+    __table_args__ = {"schema": "learning"}
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("identity.users.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    checkpoint_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("learning.material_checkpoints.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    selected_option = Column(String(10), nullable=True)
+    is_correct = Column(Boolean, nullable=False, default=False)
+    attempt_count = Column(Integer, nullable=False, default=1)
+    passed_at = Column(DateTime(timezone=True), nullable=True)
+    updated_at = Column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.now(timezone.utc),
+    )
+
+    # Relationships
+    checkpoint = relationship("MaterialCheckpoint", back_populates="attempts")
