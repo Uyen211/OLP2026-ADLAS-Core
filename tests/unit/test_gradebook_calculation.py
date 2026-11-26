@@ -91,6 +91,20 @@ def test_hurdle_forces_grade_f_br10_ac02():
     assert res.is_passed is False
 
 
+def test_hurdle_uses_tt08_rounded_group_average():
+    groups = [
+        GroupCalcSpec("g1", 50, 0, False, Decimal("4.0"), ["c1"]),
+        GroupCalcSpec("g2", 50, 0, True, Decimal("4.0"), ["c2"]),
+    ]
+    res = compute_student_final_grade(
+        groups,
+        {"c1": Decimal("8.0"), "c2": Decimal("3.96")},
+    )
+    assert res.group_averages["g2"] == Decimal("4.0")
+    assert res.hurdle_failed is False
+    assert res.is_passed is True
+
+
 def test_missing_column_marks_provisional_e_calc_01():
     groups = [
         GroupCalcSpec("g1", 50, 0, False, Decimal("4.0"), ["c1"]),

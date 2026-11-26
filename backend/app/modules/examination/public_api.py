@@ -6,7 +6,7 @@
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from decimal import Decimal
-from typing import Optional
+from typing import Dict, Optional, Sequence, Tuple
 import uuid
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.modules.examination.enums import SecurityMode
@@ -87,3 +87,11 @@ class ExaminationPublicService:
     ) -> Optional[Decimal]:
         """Return the highest graded `final_score` for a student across all attempts (max_attempts)."""
         return await self.repo.get_best_score_for_user(quiz_id, user_id)
+
+    async def get_best_quiz_scores_batch(
+        self,
+        quiz_ids: Sequence[uuid.UUID],
+        user_ids: Sequence[uuid.UUID],
+    ) -> Dict[Tuple[uuid.UUID, uuid.UUID], Decimal]:
+        """Batch-fetch highest graded `final_score` keyed by (quiz_id, user_id)."""
+        return await self.repo.get_best_scores_for_quizzes(quiz_ids, user_ids)

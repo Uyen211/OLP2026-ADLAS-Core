@@ -385,6 +385,30 @@ class ExaminationRepository:
         result = await self.db.execute(stmt)
         return result.scalar_one_or_none()
 
+    async def get_best_scores_for_quizzes(
+        self,
+        quiz_ids: Sequence[uuid.UUID],
+        user_ids: Sequence[uuid.UUID],
+    ) -> Dict[tuple[uuid.UUID, uuid.UUID], Decimal]:
+        """Batch-fetch highest final_score keyed by (quiz_id, user_id) to avoid N+1 queries."""
+        if not quiz_ids or not user_ids:
+            return {}
+        stmt = (
+            select(
+                QuizSubmission.quiz_id,
+                QuizSubmission.user_id,
+                func.max(QuizSubmission.final_score),
+            )
+            .where(
+                QuizSubmission.quiz_id.in_(list(quiz_ids)),
+                QuizSubmission.user_id.in_(list(user_ids)),
+                QuizSubmission.final_score.is_not(None),
+            )
+            .group_by(QuizSubmission.quiz_id, QuizSubmission.user_id)
+        )
+        rows = (await self.db.execute(stmt)).all()
+        return {(r[0], r[1]): r[2] for r in rows if r[2] is not None}
+
     async def apply_autosave_if_newer(
         self,
         submission_id: uuid.UUID,

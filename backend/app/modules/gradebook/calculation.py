@@ -128,12 +128,13 @@ def compute_student_final_grade(
                 grp_scores.append(Decimal(str(val)))
 
         avg = compute_group_average(grp_scores, grp.drop_lowest_count)
-        group_averages[grp.group_id] = round_tt08(avg) if avg is not None else None
+        rounded_avg = round_tt08(avg) if avg is not None else None
+        group_averages[grp.group_id] = rounded_avg
 
-        if avg is not None:
+        if avg is not None and rounded_avg is not None:
             weighted_sum += avg * (Decimal(grp.weight_percent) / Decimal("100"))
             present_weight += grp.weight_percent
-            if grp.is_hurdle and avg < Decimal(str(grp.hurdle_min_score)):
+            if grp.is_hurdle and rounded_avg < Decimal(str(grp.hurdle_min_score)):
                 hurdle_failed = True
 
     if present_weight == 0:

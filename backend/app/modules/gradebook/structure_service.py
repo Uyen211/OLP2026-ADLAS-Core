@@ -356,6 +356,15 @@ class GradebookStructureService:
         }
 
         students = await self.course_public.list_active_students(course_id)
+        quiz_ids = [
+            col.item_id
+            for col in all_columns
+            if col.item_type == GradeItemType.QUIZ.value and col.item_id is not None
+        ]
+        quiz_best_scores = await self.exam_public.get_best_quiz_scores_batch(
+            quiz_ids=quiz_ids,
+            user_ids=[s.user_id for s in students],
+        )
         group_specs = [
             GroupCalcSpec(
                 group_id=str(g.id),
@@ -385,7 +394,7 @@ class GradebookStructureService:
                 if entry is not None and entry.official_score is not None:
                     score_val = Decimal(str(entry.official_score))
                 elif col.item_type == GradeItemType.QUIZ.value and col.item_id is not None:
-                    best = await self.exam_public.get_best_quiz_score(col.item_id, stu.user_id)
+                    best = quiz_best_scores.get((col.item_id, stu.user_id))
                     if best is not None:
                         score_val = Decimal(str(best))
 
