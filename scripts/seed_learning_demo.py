@@ -77,15 +77,16 @@ def _generate_real_pdf(filepath: str, title: str, subtitle: str, sections: list[
         page.insert_text((40, 76), subtitle, fontsize=11, fontname="helv", color=(0.85, 0.90, 1.0))
 
         y = 145
-        for sec_title, sec_body in sections:
-            if y > 740:
+        for sec_idx, (sec_title, sec_body) in enumerate(sections):
+            if sec_idx > 0:
                 page = doc.new_page(width=595, height=842)
-                y = 60
-            page.insert_text((40, y), sec_title, fontsize=13, fontname="helv", color=(0.12, 0.25, 0.52))
-            y += 20
-            rect = fitz.Rect(40, y, 555, y + 140)
-            page.insert_textbox(rect, sec_body, fontsize=10.5, fontname="helv", color=(0.15, 0.15, 0.15), lineheight=1.4)
-            y += 120
+                page.draw_rect(fitz.Rect(0, 0, 595, 52), color=(0.12, 0.25, 0.52), fill=(0.12, 0.25, 0.52))
+                page.insert_text((40, 32), title, fontsize=12, fontname="helv", color=(1, 1, 1))
+                y = 85
+            page.insert_text((40, y), sec_title, fontsize=14, fontname="helv", color=(0.12, 0.25, 0.52))
+            y += 28
+            rect = fitz.Rect(40, y, 555, y + 320)
+            page.insert_textbox(rect, sec_body, fontsize=11, fontname="helv", color=(0.15, 0.15, 0.15), lineheight=1.5)
 
         # Footer
         for idx, p in enumerate(doc, start=1):
@@ -200,6 +201,7 @@ def _ensure_demo_files() -> dict[str, str]:
             [
                 ("1. TCP Three-Way Handshake (RFC 793)", "Ket noi TCP duoc thiet lap qua 3 buoc SYN, SYN-ACK, ACK nham dong bo so thu tu goi tin (Sequence Number) va dam bao truyen tin tin cay."),
                 ("2. Kiem soat tac nghen (Congestion Control)", "Cac thuat toan Slow Start, Congestion Avoidance va Fast Recovery giup toi uu bang thong mang va tranh mat goi tin."),
+                ("3. Phan tach Tang Giao van TCP va UDP", "TCP huong ket noi, dam bao thu tu va kiem soat loi; trong khi UDP phi ket noi, do tre thap phu hop cho streaming va DNS."),
             ],
         ),
         "it4010_ch1_clean_arch.pdf": (
@@ -208,6 +210,7 @@ def _ensure_demo_files() -> dict[str, str]:
             [
                 ("1. Nguyen tac Dependency Rule", "Cac tang nghiep vu cot loi (Domain Entities, Use Cases) khong duoc phep phu thuoc vao tang ha tang ben ngoai nhu Database, Framework hay UI."),
                 ("2. Modular Monolith trong ADLAS", "Moi phan he (identity, course, learning, assessment) duoc to chuc doc lap voi ranh gioi giao tiep ro rang qua Service Layer."),
+                ("3. Dependency Inversion Principle (DIP)", "Module cap cao va module cap thap deu nen phu thuoc vao Abstraction (Interface/Protocol), giup de dang kiem thu va mo rong."),
             ],
         ),
     }
@@ -303,8 +306,7 @@ def _ensure_demo_files() -> dict[str, str]:
     paths = {}
     for fname, args in pdf_specs.items():
         fpath = os.path.join(materials_dir, fname)
-        if not os.path.exists(fpath) or os.path.getsize(fpath) < 500:
-            _generate_real_pdf(fpath, *args)
+        _generate_real_pdf(fpath, *args)
         paths[fname] = f"materials/{fname}"
 
     for fname, args in pptx_specs.items():
@@ -333,8 +335,7 @@ def _ensure_demo_files() -> dict[str, str]:
     }
     for fname, (v_title, v_dur) in video_specs.items():
         fpath = os.path.join(materials_dir, fname)
-        if not os.path.exists(fpath) or os.path.getsize(fpath) < 100_000:
-            generate_synthetic_mp4(fpath, title=v_title, duration_seconds=v_dur)
+        generate_synthetic_mp4(fpath, title=v_title, duration_seconds=v_dur)
         paths[fname] = f"materials/{fname}"
 
     _sync_to_docker_volume(materials_dir)
@@ -954,7 +955,23 @@ COURSE_SPECS = [
                 "prereq": "m1",
                 "is_published": True,
                 "materials": [
-                    {"key": "mat3", "title": "Hướng dẫn thực hành: Bắt và lọc gói tin HTTP/DNS bất thường", "type": MaterialType.DOCUMENT, "file": "it3080_ch2_wireshark_lab.docx", "lo": "LO-02", "duration": 40},
+                    {
+                        "key": "mat3",
+                        "title": "Hướng dẫn thực hành: Bắt và lọc gói tin HTTP/DNS bất thường",
+                        "type": MaterialType.DOCUMENT,
+                        "file": "it3080_ch2_wireshark_lab.docx",
+                        "lo": "LO-02",
+                        "duration": 40,
+                        "checkpoints": [
+                            {
+                                "section_index": 1,
+                                "question": "Bộ lọc nào trong Wireshark dùng để chỉ hiển thị gói tin TCP đến cổng 443?",
+                                "options": {"A": "tcp.port == 443", "B": "ip.src == 443", "C": "dns.port == 443", "D": "http.host == 443"},
+                                "correct": "A",
+                                "is_blocking": True,
+                            }
+                        ],
+                    },
                 ],
             },
             {
@@ -996,7 +1013,40 @@ COURSE_SPECS = [
                 "is_published": True,
                 "materials": [
                     {"key": "mat1", "title": "Slide: Dependency Inversion và Clean Architecture", "type": MaterialType.SLIDE, "file": "it4010_ch1_solid_gof.pptx", "lo": "LO-01", "duration": 45},
-                    {"key": "mat2", "title": "Tài liệu đọc: Clean Architecture trong dự án thực tế", "type": MaterialType.PDF, "file": "it4010_ch1_clean_arch.pdf", "lo": "LO-01", "duration": 30},
+                    {
+                        "key": "mat2",
+                        "title": "Tài liệu đọc: Clean Architecture trong dự án thực tế",
+                        "type": MaterialType.PDF,
+                        "file": "it4010_ch1_clean_arch.pdf",
+                        "lo": "LO-01",
+                        "duration": 30,
+                        "checkpoints": [
+                            {
+                                "section_index": 1,
+                                "question": "Theo Dependency Rule trong Clean Architecture, tầng nào không được phép phụ thuộc vào Framework hoặc Database?",
+                                "options": {
+                                    "A": "Domain Entities & Use Cases",
+                                    "B": "UI Controllers",
+                                    "C": "External API Gateways",
+                                    "D": "Database Migrations",
+                                },
+                                "correct": "A",
+                                "is_blocking": True,
+                            },
+                            {
+                                "section_index": 3,
+                                "question": "Nguyên lý Dependency Inversion (DIP) yêu cầu các module phụ thuộc vào yếu tố nào?",
+                                "options": {
+                                    "A": "Concrete Class cụ thể",
+                                    "B": "Abstraction (Interface/Protocol)",
+                                    "C": "Biến toàn cục",
+                                    "D": "Thư viện bên thứ 3",
+                                },
+                                "correct": "B",
+                                "is_blocking": True,
+                            },
+                        ],
+                    },
                 ],
             },
             {
@@ -1005,7 +1055,28 @@ COURSE_SPECS = [
                 "prereq": "m1",
                 "is_published": True,
                 "materials": [
-                    {"key": "mat3", "title": "Cẩm nang: Giao tiếp bất đồng bộ với Kafka/RabbitMQ", "type": MaterialType.DOCUMENT, "file": "it4010_ch2_microservices.md", "lo": "LO-02", "duration": 35},
+                    {
+                        "key": "mat3",
+                        "title": "Cẩm nang: Giao tiếp bất đồng bộ với Kafka/RabbitMQ",
+                        "type": MaterialType.DOCUMENT,
+                        "file": "it4010_ch2_microservices.md",
+                        "lo": "LO-02",
+                        "duration": 35,
+                        "checkpoints": [
+                            {
+                                "section_index": 1,
+                                "question": "Lợi ích chính của Message Broker (Kafka / RabbitMQ) trong Microservices là gì?",
+                                "options": {
+                                    "A": "Tách rời (decouple) các dịch vụ và xử lý bất đồng bộ",
+                                    "B": "Thay thế hoàn toàn giao thức HTTP",
+                                    "C": "Loại bỏ nhu cầu thiết kế cơ sở dữ liệu",
+                                    "D": "Chỉ dùng để lưu tệp ảnh",
+                                },
+                                "correct": "A",
+                                "is_blocking": True,
+                            }
+                        ],
+                    },
                     {
                         "key": "mat_vid",
                         "title": "Video: Thiết kế Transactional Outbox Pattern cho Microservices",

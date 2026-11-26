@@ -198,7 +198,7 @@ export const MaterialViewerModal: React.FC<MaterialViewerModalProps> = ({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm">
-      <div className="flex max-h-[92vh] w-full max-w-5xl flex-col overflow-hidden rounded-mm border border-mm-border bg-mm-surface shadow-2xl">
+      <div className="flex max-h-[92vh] w-full max-w-6xl flex-col overflow-hidden rounded-mm border border-mm-border bg-mm-surface shadow-2xl">
         {/* Header */}
         <div className="flex items-start justify-between gap-4 border-b border-mm-divider bg-mm-surface-alt/40 px-5 py-4">
           <div className="flex items-start gap-3">
@@ -260,100 +260,99 @@ export const MaterialViewerModal: React.FC<MaterialViewerModalProps> = ({
                 <span>Thử tải về tệp gốc</span>
               </MmButton>
             </div>
-          ) : isExternalUrl ? (
-            youtubeEmbed ? (
-              <div className="aspect-video w-full overflow-hidden rounded-mm border border-mm-divider bg-black">
-                <iframe
-                  src={youtubeEmbed}
-                  title={material.title}
-                  className="h-full w-full"
-                  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                  allowFullScreen
-                />
-              </div>
-            ) : isVideo ? (
-              <InteractiveVideoPlayer
-                courseId={courseId}
-                src={fileUrl}
-                checkpoints={checkpoints}
-                isCompleted={isCompleted}
-                onCheckpointPassed={handleCheckpointPassed}
-                onReadyToComplete={handleCompleteMaterial}
-              />
-            ) : (
-              <div className="flex flex-col items-center justify-center gap-4 rounded-mm border border-mm-divider bg-mm-surface p-10 text-center">
-                <ExternalLink className="h-10 w-10 text-mm-brand" />
-                <div>
-                  <p className="font-medium text-mm-heading">Học liệu liên kết trực tuyến</p>
-                  <p className="mt-1 break-all text-xs text-mm-text-muted">{fileUrl}</p>
-                </div>
-                <a
-                  href={fileUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="inline-flex items-center gap-2 rounded-mm bg-mm-brand px-4 py-2 text-sm font-medium text-white hover:opacity-90"
-                >
-                  <ExternalLink className="h-4 w-4" />
-                  <span>Mở liên kết trong tab mới</span>
-                </a>
-              </div>
-            )
-          ) : textContent !== null ? (
-            <div className="rounded-mm border border-mm-divider bg-mm-surface p-6">
-              <pre className="whitespace-pre-wrap font-sans text-sm leading-relaxed text-mm-text">
-                {textContent}
-              </pre>
-            </div>
-          ) : isPdf && objectUrl ? (
-            <iframe
-              src={objectUrl}
-              title={material.title}
-              className="h-[68vh] w-full rounded-mm border border-mm-divider bg-white"
-            />
-          ) : isVideo && objectUrl ? (
+          ) : isVideo && (isExternalUrl ? !youtubeEmbed : Boolean(objectUrl)) ? (
             <InteractiveVideoPlayer
               courseId={courseId}
-              src={objectUrl}
+              src={isExternalUrl ? fileUrl : objectUrl!}
               checkpoints={checkpoints}
               isCompleted={isCompleted}
               onCheckpointPassed={handleCheckpointPassed}
               onReadyToComplete={handleCompleteMaterial}
             />
-          ) : isOfficeDoc ? (
-            <div className="flex flex-col items-center justify-center gap-4 rounded-mm border border-mm-divider bg-mm-surface p-12 text-center">
-              {MATERIAL_ICON[material.material_type]}
-              <div className="max-w-md space-y-1.5">
-                <h4 className="font-medium text-mm-heading">
-                  Tài liệu định dạng Office ({lowerUrl.split(".").pop()?.toUpperCase()})
-                </h4>
-                <p className="text-sm text-mm-text-muted">
-                  Trình duyệt không hỗ trợ hiển thị trực tiếp tệp PowerPoint/Word. Vui lòng tải về để mở bằng Microsoft Office hoặc LibreOffice.
-                </p>
-              </div>
-              <MmButton variant="primary" size="md" onClick={() => onDownload(material)}>
-                <Download className="h-4 w-4" />
-                <span>Tải về tệp gốc</span>
-              </MmButton>
-            </div>
           ) : (
-            <div className="flex flex-col items-center justify-center gap-3 py-14 text-center text-sm text-mm-text-muted">
-              <p>Định dạng tệp này không hỗ trợ xem trước trực tiếp.</p>
-              <MmButton variant="primary" size="sm" onClick={() => onDownload(material)}>
-                <Download className="h-4 w-4" />
-                <span>Tải về tệp gốc</span>
-              </MmButton>
-            </div>
-          )}
+            <div className="grid grid-cols-1 gap-5 lg:grid-cols-12">
+              <div className="lg:col-span-7">
+                {isExternalUrl ? (
+                  youtubeEmbed ? (
+                    <div className="aspect-video w-full overflow-hidden rounded-mm border border-mm-divider bg-black">
+                      <iframe
+                        src={youtubeEmbed}
+                        title={material.title}
+                        className="h-full w-full"
+                        allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                        allowFullScreen
+                      />
+                    </div>
+                  ) : (
+                    <div className="flex flex-col items-center justify-center gap-4 rounded-mm border border-mm-divider bg-mm-surface p-10 text-center">
+                      <ExternalLink className="h-10 w-10 text-mm-brand" />
+                      <div>
+                        <p className="font-medium text-mm-heading">Học liệu liên kết trực tuyến</p>
+                        <p className="mt-1 break-all text-xs text-mm-text-muted">{fileUrl}</p>
+                      </div>
+                      <a
+                        href={fileUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-2 rounded-mm bg-mm-brand px-4 py-2 text-sm font-medium text-white hover:opacity-90"
+                      >
+                        <ExternalLink className="h-4 w-4" />
+                        <span>Mở liên kết trong tab mới</span>
+                      </a>
+                    </div>
+                  )
+                ) : textContent !== null ? (
+                  <div className="max-h-[65vh] overflow-y-auto rounded-mm border border-mm-divider bg-mm-surface p-6">
+                    <pre className="whitespace-pre-wrap font-sans text-sm leading-relaxed text-mm-text">
+                      {textContent}
+                    </pre>
+                  </div>
+                ) : isPdf && objectUrl ? (
+                  <iframe
+                    src={objectUrl}
+                    title={material.title}
+                    className="h-[65vh] w-full rounded-mm border border-mm-divider bg-white"
+                  />
+                ) : isOfficeDoc ? (
+                  <div className="flex flex-col items-center justify-center gap-4 rounded-mm border border-mm-divider bg-mm-surface p-12 text-center">
+                    {MATERIAL_ICON[material.material_type]}
+                    <div className="max-w-md space-y-1.5">
+                      <h4 className="font-medium text-mm-heading">
+                        Tài liệu định dạng Office ({lowerUrl.split(".").pop()?.toUpperCase()})
+                      </h4>
+                      <p className="text-sm text-mm-text-muted">
+                        Trình duyệt không hỗ trợ hiển thị trực tiếp tệp PowerPoint/Word. Vui lòng tải về để mở bằng Microsoft Office hoặc LibreOffice.
+                      </p>
+                    </div>
+                    <MmButton variant="primary" size="md" onClick={() => onDownload(material)}>
+                      <Download className="h-4 w-4" />
+                      <span>Tải về tệp gốc</span>
+                    </MmButton>
+                  </div>
+                ) : (
+                  <div className="flex flex-col items-center justify-center gap-3 py-14 text-center text-sm text-mm-text-muted">
+                    <p>Định dạng tệp này không hỗ trợ xem trước trực tiếp.</p>
+                    <MmButton variant="primary" size="sm" onClick={() => onDownload(material)}>
+                      <Download className="h-4 w-4" />
+                      <span>Tải về tệp gốc</span>
+                    </MmButton>
+                  </div>
+                )}
+              </div>
 
-          {!isVideo && !loading && !error && (
-            <DocumentCheckpointsPanel
-              courseId={courseId}
-              checkpoints={checkpoints}
-              isCompleted={isCompleted}
-              completing={completing}
-              onCheckpointPassed={handleCheckpointPassed}
-              onCompleteMaterial={handleCompleteMaterial}
-            />
+              <div className="lg:col-span-5">
+                <div className="max-h-[65vh] overflow-y-auto">
+                  <DocumentCheckpointsPanel
+                    courseId={courseId}
+                    checkpoints={checkpoints}
+                    isCompleted={isCompleted}
+                    completing={completing}
+                    onCheckpointPassed={handleCheckpointPassed}
+                    onCompleteMaterial={handleCompleteMaterial}
+                  />
+                </div>
+              </div>
+            </div>
           )}
         </div>
 

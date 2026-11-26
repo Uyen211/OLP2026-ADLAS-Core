@@ -170,10 +170,10 @@ def generate_synthetic_mp4(
     filepath: str,
     title: str = "ADLAS Interactive Video Demo",
     duration_seconds: int = 45,
-    width: int = 320,
-    height: int = 192,
+    width: int = 512,
+    height: int = 288,
 ) -> None:
-    """Generate a valid playable MP4 (H.264 Baseline, 1fps) with a live second counter."""
+    """Generate a valid playable MP4 (H.264 Baseline, 1fps, 16:9) with a live second counter."""
     os.makedirs(os.path.dirname(os.path.abspath(filepath)), exist_ok=True)
     width_mbs = width // 16
     height_mbs = height // 16
@@ -182,8 +182,8 @@ def generate_synthetic_mp4(
     pps = _make_pps()
 
     try:
-        font_lg = ImageFont.truetype("arial.ttf", 26)
-        font_sm = ImageFont.truetype("arial.ttf", 13)
+        font_lg = ImageFont.truetype("arial.ttf", 40)
+        font_sm = ImageFont.truetype("arial.ttf", 18)
     except Exception:
         font_lg = ImageFont.load_default()
         font_sm = ImageFont.load_default()
@@ -192,16 +192,16 @@ def generate_synthetic_mp4(
     for sec in range(duration_seconds):
         img = Image.new("RGB", (width, height), (18, 36, 74))
         draw = ImageDraw.Draw(img)
-        draw.rectangle([0, 0, width, 34], fill=(12, 24, 52))
-        draw.text((12, 10), title[:36], fill=(210, 225, 255), font=font_sm)
+        draw.rectangle([0, 0, width, 48], fill=(12, 24, 52))
+        draw.text((20, 14), title[:44], fill=(210, 225, 255), font=font_sm)
 
         timer_str = f"00:{sec:02d} / 00:{duration_seconds:02d}"
-        draw.text((68, 72), timer_str, fill=(255, 255, 255), font=font_lg)
+        draw.text((width // 2 - 105, height // 2 - 24), timer_str, fill=(255, 255, 255), font=font_lg)
 
         # Progress bar
-        bar_w = int((width - 40) * ((sec + 1) / duration_seconds))
-        draw.rectangle([20, height - 28, width - 20, height - 16], fill=(40, 65, 115))
-        draw.rectangle([20, height - 28, 20 + bar_w, height - 16], fill=(59, 130, 246))
+        bar_w = int((width - 48) * ((sec + 1) / duration_seconds))
+        draw.rectangle([24, height - 38, width - 24, height - 22], fill=(40, 65, 115))
+        draw.rectangle([24, height - 38, 24 + bar_w, height - 22], fill=(59, 130, 246))
 
         y, u, v = _rgb_to_yuv420p(img)
         nal = _make_idr_slice(y, u, v, width_mbs, height_mbs, sec % 2)
@@ -263,7 +263,8 @@ def generate_synthetic_mp4(
     avc1 = _box(b"avc1", avc1_payload)
     stsd = _full_box(b"stsd", 0, 0, struct.pack(">I", 1) + avc1)
     stts = _full_box(b"stts", 0, 0, struct.pack(">III", 1, duration_seconds, sample_duration))
-    stsc = _full_box(b"stsc", 0, 0, struct.pack(">IIII", 1, 1, 1, 1))
+    # All samples reside contiguously in chunk 1
+    stsc = _full_box(b"stsc", 0, 0, struct.pack(">IIII", 1, 1, duration_seconds, 1))
     stsz = _full_box(
         b"stsz", 0, 0,
         struct.pack(">II", 0, duration_seconds) + b"".join(struct.pack(">I", len(s)) for s in samples),

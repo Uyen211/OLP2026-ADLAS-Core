@@ -88,16 +88,21 @@ export const InteractiveVideoPlayer: React.FC<InteractiveVideoPlayerProps> = ({
       setMaxWatched(current);
     }
 
-    // Trigger unpassed checkpoint at stop_time_seconds
-    for (const chk of checkpoints) {
-      if (chk.is_passed || chk.stop_time_seconds === null || chk.stop_time_seconds === undefined) {
-        continue;
-      }
+    // Trigger earliest unpassed checkpoint at or past stop_time_seconds
+    const pendingCheckpoints = checkpoints
+      .filter((c) => !c.is_passed && c.stop_time_seconds !== null && c.stop_time_seconds !== undefined)
+      .sort((a, b) => (a.stop_time_seconds ?? 0) - (b.stop_time_seconds ?? 0));
+
+    for (const chk of pendingCheckpoints) {
+      const stopAt = chk.stop_time_seconds!;
       const cooldown = lastTriggeredRef.current[chk.id] || 0;
       if (Date.now() - cooldown < 3000) continue;
 
-      if (Math.abs(current - chk.stop_time_seconds) <= 0.75) {
+      if (current >= stopAt) {
         vid.pause();
+        if (Math.abs(current - stopAt) > 1.5) {
+          vid.currentTime = stopAt;
+        }
         setActiveCheckpoint(chk);
         setCountdown(chk.time_limit_seconds ?? 10);
         setFeedback(null);
@@ -156,16 +161,17 @@ export const InteractiveVideoPlayer: React.FC<InteractiveVideoPlayerProps> = ({
 
   return (
     <div className="space-y-3">
-      <div className="relative overflow-hidden rounded-mm border border-mm-divider bg-black">
+      <div className="relative aspect-video w-full overflow-hidden rounded-mm border border-mm-divider bg-black">
         <video
           ref={videoRef}
           controls
+          preload="metadata"
           src={src}
           onLoadedMetadata={(e) => setDuration(e.currentTarget.duration || 0)}
           onTimeUpdate={handleTimeUpdate}
           onSeeking={handleSeeking}
           onEnded={handleEnded}
-          className="max-h-[62vh] w-full"
+          className="h-full w-full object-contain"
         />
 
         {/* Interactive Checkpoint Overlay */}
