@@ -201,7 +201,16 @@ export const SpeedGraderPage: React.FC = () => {
       setLoadingAi(true);
       const proposal = await gradebookService.generateAiRubricProposal(workspace.submission_id);
       setAiProposal(proposal);
-      toast.success("AI đã hoàn tất đối soát bằng chứng và đề xuất điểm Rubric.");
+      if (
+        proposal.generation_source === "deterministic_fallback" ||
+        proposal.evidence_flag === "HUMAN_REVIEW"
+      ) {
+        toast.info(
+          "AI không đủ dữ liệu hoặc tạm thời quá tải (E-12). Đã chuyển sang chế độ HUMAN_REVIEW."
+        );
+      } else {
+        toast.success("AI đã hoàn tất đối soát bằng chứng và đề xuất điểm Rubric.");
+      }
     } catch (err: unknown) {
       const code = (err as { code?: string })?.code;
       toast.error(resolveErrorMessage(code, "Không thể chạy AI đề xuất Rubric."));
@@ -239,6 +248,12 @@ export const SpeedGraderPage: React.FC = () => {
         override_reason: overrideReason.trim() || undefined,
       });
       setWorkspace(updated);
+      setOfficialScore(
+        updated.official_score !== null && updated.official_score !== undefined
+          ? String(updated.official_score)
+          : String(scoreNum)
+      );
+      setOverrideReason("");
       setIsDirty(false);
       toast.success("Đã lưu điểm chính thức và nhận xét cho sinh viên.");
 

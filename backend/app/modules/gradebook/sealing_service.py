@@ -222,6 +222,7 @@ class GradebookSealingService:
             raise GradebookNotFoundException("trang thai khoa so diem")
 
         now = datetime.now(timezone.utc)
+        await self.repo.enable_emergency_unlock_guc()
         lock.is_locked = False
         lock.unlock_decision_code = payload.decision_code.strip()
         lock.unlock_reason = payload.reason.strip()

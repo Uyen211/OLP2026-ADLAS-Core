@@ -115,6 +115,7 @@ export const RubricFeedbackCockpit: React.FC<RubricFeedbackCockpitProps> = ({
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<BlobPart[]>([]);
   const timerRef = useRef<number | null>(null);
+  const isMountedRef = useRef<boolean>(true);
 
   const isLocked = workspace.is_gradebook_locked;
 
@@ -152,7 +153,9 @@ export const RubricFeedbackCockpit: React.FC<RubricFeedbackCockpitProps> = ({
 
   // Cleanup recorder on unmount
   useEffect(() => {
+    isMountedRef.current = true;
     return () => {
+      isMountedRef.current = false;
       if (timerRef.current) window.clearInterval(timerRef.current);
       if (mediaRecorderRef.current && mediaRecorderRef.current.state !== "inactive") {
         mediaRecorderRef.current.stop();
@@ -245,6 +248,7 @@ export const RubricFeedbackCockpit: React.FC<RubricFeedbackCockpitProps> = ({
 
       recorder.onstop = async () => {
         stream.getTracks().forEach((track) => track.stop());
+        if (!isMountedRef.current) return;
         const blob = new Blob(chunksRef.current, { type: "audio/webm" });
         if (blob.size === 0) return;
         try {
@@ -253,13 +257,17 @@ export const RubricFeedbackCockpit: React.FC<RubricFeedbackCockpitProps> = ({
             blob,
             `voice_${workspace.submission_id.slice(0, 8)}.webm`
           );
+          if (!isMountedRef.current) return;
           onChangeVoiceFeedbackUrl(uploaded.voice_feedback_url);
           toast.success("Đã tải lên nhận xét giọng nói thành công.");
         } catch (err: unknown) {
+          if (!isMountedRef.current) return;
           const code = (err as { code?: string })?.code;
           toast.error(resolveErrorMessage(code, "Không thể tải lên tệp ghi âm."));
         } finally {
-          setUploadingVoice(false);
+          if (isMountedRef.current) {
+            setUploadingVoice(false);
+          }
         }
       };
 

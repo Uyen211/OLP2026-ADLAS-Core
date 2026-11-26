@@ -14,7 +14,7 @@ from app.modules.course.enums import ContextualRole
 from app.modules.course.public_api import CoursePublicService
 from app.modules.gradebook.ai_grader_service import AIGraderService
 from app.modules.gradebook.enums import SpeedGraderFilter
-from app.modules.gradebook.exceptions import GradebookNotFoundException
+from app.modules.gradebook.exceptions import GradebookForbiddenException, GradebookNotFoundException
 from app.modules.gradebook.schemas import (
     CellGradeDTO,
     ClassGradebookOverviewResponse,
@@ -264,7 +264,8 @@ async def emergency_unlock_gradebook(
     db: AsyncSession = Depends(get_db),
     current_user: CurrentUser = Depends(get_current_user),
 ):
-    await _require_instructor(db, course_id, current_user)
+    if not _is_admin(current_user):
+        raise GradebookForbiddenException()
     return await GradebookSealingService(db).emergency_unlock_gradebook(
         course_id=course_id,
         payload=payload,
