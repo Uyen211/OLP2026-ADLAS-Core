@@ -3,9 +3,11 @@
 
 """REST API router for Gradebook Structure, TT08 Overview, AI Rubric Proposal, SpeedGrader, and Lock."""
 
+import io
 from typing import List, Optional
 import uuid
-from fastapi import APIRouter, Depends, File, Query, Response, UploadFile, status
+from fastapi import APIRouter, Depends, File, Query, UploadFile, status
+from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.database import get_db
 from app.modules.course.enums import ContextualRole
@@ -385,8 +387,8 @@ async def download_submission_artifact(
         raise GradebookNotFoundException("bai nop sinh vien")
     await _require_instructor(db, bundle.course_id, current_user)
     data, content_type, filename = await svc.download_submission_bytes(submission_id)
-    return Response(
-        content=data,
+    return StreamingResponse(
+        io.BytesIO(data),
         media_type=content_type,
         headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
@@ -413,7 +415,22 @@ async def upload_voice_feedback(
     db: AsyncSession = Depends(get_db),
     current_user: CurrentUser = Depends(get_current_user),
 ):
-    raw_bytes = await file.read()
+    from app.modules.gradebook.exceptions import GradebookInvalidVoiceFileException
+    from app.modules.gradebook.speedgrader_service import MAX_VOICE_BYTES
+
+    chunks: List[bytes] = []
+    total_size = 0
+    while True:
+        chunk = await file.read(65536)
+        if not chunk:
+            break
+        total_size += len(chunk)
+        if total_size > MAX_VOICE_BYTES:
+            raise GradebookInvalidVoiceFileException(
+                "Tep ghi am vuot qua dung luong toi da 10MB (E-7)."
+            )
+        chunks.append(chunk)
+    raw_bytes = b"".join(chunks)
     return await SpeedGraderService(db).upload_voice_feedback(
         data=raw_bytes,
         filename=file.filename or "voice-feedback.webm",
@@ -428,5 +445,10 @@ async def stream_voice_feedback(
     db: AsyncSession = Depends(get_db),
     current_user: CurrentUser = Depends(get_current_user),
 ):
-    data, content_type = await SpeedGraderService(db).download_voice_feedback(object_key)
-    return Response(content=data, media_type=content_type)
+    data, content_type = await SpeedGraderService(db).download_voice_feedback(
+        object_key,
+        actor_id=current_user.user.id,
+        is_admin=_is_admin(current_user),
+        course_role_checker=lambda cid: _require_instructor(db, cid, current_user),
+    )
+    return StreamingResponse(io.BytesIO(data), media_type=content_type)

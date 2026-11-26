@@ -42,6 +42,37 @@ import { GradebookLockModal } from "./GradebookLockModal";
 import { GradebookStructureModal } from "./GradebookStructureModal";
 import { GradeDistributionModal } from "./GradeDistributionModal";
 
+const AuthenticatedAudioPlayer: React.FC<{ src: string }> = ({ src }) => {
+  const [objectUrl, setObjectUrl] = useState<string | null>(null);
+
+  useEffect(() => {
+    let active = true;
+    let createdUrl: string | null = null;
+    gradebookService
+      .fetchVoiceFeedbackObjectUrl(src)
+      .then((url) => {
+        if (active) {
+          createdUrl = url;
+          setObjectUrl(url);
+        } else {
+          URL.revokeObjectURL(url);
+        }
+      })
+      .catch(() => {
+        if (active) setObjectUrl(null);
+      });
+    return () => {
+      active = false;
+      if (createdUrl) {
+        URL.revokeObjectURL(createdUrl);
+      }
+    };
+  }, [src]);
+
+  if (!objectUrl) return null;
+  return <audio controls className="h-8 max-w-xs" src={objectUrl} />;
+};
+
 export const GradebookPage: React.FC = () => {
   const { courseId = "" } = useParams<{ courseId: string }>();
   const me = useAuthStore((s) => s.me);
@@ -596,7 +627,7 @@ export const GradebookPage: React.FC = () => {
                           <div className="space-y-1">
                             <span>{item.instructor_feedback || item.status_label}</span>
                             {item.voice_feedback_url && (
-                              <audio controls className="h-8 max-w-xs" src={item.voice_feedback_url} />
+                              <AuthenticatedAudioPlayer src={item.voice_feedback_url} />
                             )}
                           </div>
                         )}

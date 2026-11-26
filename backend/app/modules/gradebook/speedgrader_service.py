@@ -479,11 +479,36 @@ class SpeedGraderService:
             "storage_backend": self.storage.last_backend,
         }
 
-    async def download_voice_feedback(self, object_key: str) -> Tuple[bytes, str]:
-        """Stream voice feedback audio bytes from Supabase Storage / S3 via Backend proxy."""
+    async def download_voice_feedback(
+        self,
+        object_key: str,
+        actor_id: Optional[uuid.UUID] = None,
+        is_admin: bool = False,
+        course_role_checker: Optional[object] = None,
+    ) -> Tuple[bytes, str]:
+        """Stream voice feedback audio bytes after enforcing uploader/instructor/student-unmuted access."""
         clean_key = object_key.lstrip("/")
         if ".." in clean_key.split("/"):
             raise GradebookNotFoundException("tep ghi am")
+
+        if actor_id is not None and not is_admin and not clean_key.startswith(f"{actor_id}/"):
+            voice_url = f"/api/v1/gradebook/voice-feedback/{clean_key}"
+            access_info = await self.repo.get_voice_feedback_access_info(voice_url)
+            if access_info is None:
+                raise GradebookNotFoundException("tep ghi am")
+            course_id, student_user_id, is_muted = access_info
+            if actor_id == student_user_id:
+                if is_muted:
+                    from app.modules.gradebook.exceptions import GradebookMutedAccessDeniedException
+
+                    raise GradebookMutedAccessDeniedException()
+            elif course_role_checker is not None:
+                await course_role_checker(course_id)
+            else:
+                from app.modules.gradebook.exceptions import GradebookForbiddenException
+
+                raise GradebookForbiddenException()
+
         uri = ObjectStorageClient.build_uri(settings.MINIO_BUCKET_VOICE, clean_key)
         try:
             return await self.storage.download_bytes(uri)

@@ -133,6 +133,21 @@ class GradebookRepository:
         await self.db.flush()
         return entry
 
+    async def get_voice_feedback_access_info(
+        self, voice_feedback_url: str
+    ) -> Optional[tuple[uuid.UUID, uuid.UUID, bool]]:
+        """Return (course_id, student_user_id, is_muted) for a voice feedback URL if linked to a grade."""
+        stmt = (
+            select(GradebookColumn.course_id, GradeEntry.user_id, GradebookColumn.is_muted)
+            .join(GradebookColumn, GradeEntry.column_id == GradebookColumn.id)
+            .where(GradeEntry.voice_feedback_url == voice_feedback_url)
+            .limit(1)
+        )
+        row = (await self.db.execute(stmt)).first()
+        if row is None:
+            return None
+        return row[0], row[1], bool(row[2])
+
     # --- Locks ---
     async def get_course_lock(self, course_id: uuid.UUID) -> Optional[CourseGradebookLock]:
         stmt = select(CourseGradebookLock).where(CourseGradebookLock.course_id == course_id)
