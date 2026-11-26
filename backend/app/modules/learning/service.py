@@ -3,15 +3,20 @@
 
 """Business logic services for Learning Modules and Learning Materials."""
 
+import os
 from datetime import datetime, timezone
 from typing import Dict, List, Optional
 import uuid
+from fastapi import UploadFile
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.modules.course.enums import ContextualRole
 from app.modules.course.public_api import CoursePublicService
+from app.modules.learning.enums import MaterialType
 from app.modules.learning.exceptions import (
+    InvalidMaterialFormatException,
     LearningMaterialNotFoundException,
     LearningModuleNotFoundException,
+    MaterialQuotaExceededException,
     ModuleCircularDependencyException,
     ModuleLockedException,
 )
@@ -21,10 +26,12 @@ from app.modules.learning.schemas import (
     MaterialCreate,
     MaterialResponse,
     MaterialUpdate,
+    MaterialUploadResponse,
     ModuleCreate,
     ModuleResponse,
     ModuleUpdate,
 )
+from app.modules.system.storage_service import StorageAdminService
 
 
 class LearningModuleService:
@@ -585,3 +592,118 @@ class LearningMaterialService:
         mat.is_published = is_published
         await self.repo.update_material(mat)
         return await self.get_material_detail(course_id, mat.id, user_id, is_admin=is_admin)
+
+    @staticmethod
+    def detect_material_type(filename: str) -> MaterialType:
+        """Detect MaterialType from filename extension."""
+        ext = os.path.splitext(filename)[1].lower()
+        if ext in {".pdf"}:
+            return MaterialType.PDF
+        if ext in {".ppt", ".pptx"}:
+            return MaterialType.SLIDE
+        if ext in {".mp4", ".webm", ".mov", ".mkv"}:
+            return MaterialType.VIDEO
+        if ext in {".docx", ".doc", ".txt", ".md"}:
+            return MaterialType.DOCUMENT
+        raise InvalidMaterialFormatException(
+            f"Định dạng tệp '{ext}' không được hỗ trợ. Vui lòng tải lên PDF, PPT/PPTX, MP4/WEBM, DOCX, TXT hoặc Markdown."
+        )
+
+    async def upload_material_file(
+        self,
+        course_id: uuid.UUID,
+        module_id: uuid.UUID,
+        file: UploadFile,
+        user_id: uuid.UUID,
+        is_admin: bool = False,
+    ) -> MaterialUploadResponse:
+        """Upload learning material file with BR-STORAGE-02 quota enforcement."""
+        await self.course_service.assert_course_role(
+            course_id=course_id,
+            user_id=user_id,
+            allowed_roles=[ContextualRole.INSTRUCTOR],
+            is_admin=is_admin,
+        )
+
+        mod = await self.repo.get_module(module_id)
+        if not mod or mod.course_id != course_id:
+            raise LearningModuleNotFoundException()
+
+        filename = os.path.basename(file.filename or "material")
+        mat_type = self.detect_material_type(filename)
+
+        storage_admin = StorageAdminService(self.db)
+        quotas = await storage_admin.get_global_quotas()
+
+        if mat_type == MaterialType.VIDEO:
+            max_bytes = quotas.max_video_mb * 1024 * 1024
+            quota_label = f"{quotas.max_video_mb}MB"
+        else:
+            max_bytes = quotas.max_slide_mb * 1024 * 1024
+            quota_label = f"{quotas.max_slide_mb}MB"
+
+        upload_dir = "/app/uploads/materials"
+        os.makedirs(upload_dir, exist_ok=True)
+        safe_filename = f"{uuid.uuid4()}-{filename}"
+        local_path = os.path.join(upload_dir, safe_filename)
+
+        total_written = 0
+        with open(local_path, "wb") as buffer:
+            while chunk := await file.read(1024 * 1024):
+                total_written += len(chunk)
+                if total_written > max_bytes:
+                    raise MaterialQuotaExceededException(
+                        f"Tệp học liệu '{filename}' ({round(total_written / (1024 * 1024), 2)}MB) vượt quá hạn ngạch tối đa {quota_label} (Quy tắc BR-STORAGE-02)."
+                    )
+                buffer.write(chunk)
+
+        return MaterialUploadResponse(
+            file_url=local_path,
+            file_name=filename,
+            size_bytes=total_written,
+            material_type=mat_type,
+        )
+
+    async def get_material_file_path(
+        self,
+        course_id: uuid.UUID,
+        material_id: uuid.UUID,
+        user_id: uuid.UUID,
+        is_admin: bool = False,
+    ) -> str:
+        """Validate permissions and return local file path for download/preview."""
+        role = await self.course_service.assert_course_role(
+            course_id=course_id,
+            user_id=user_id,
+            allowed_roles=[ContextualRole.INSTRUCTOR, ContextualRole.STUDENT],
+            is_admin=is_admin,
+        )
+
+        mat = await self.repo.get_material(material_id)
+        if not mat or not mat.file_url:
+            raise LearningMaterialNotFoundException()
+
+        mod = await self.repo.get_module(mat.module_id)
+        if not mod or mod.course_id != course_id:
+            raise LearningMaterialNotFoundException()
+
+        is_student = (role == ContextualRole.STUDENT and not is_admin)
+        if is_student:
+            if not mat.is_published or not mod.is_published:
+                raise LearningMaterialNotFoundException()
+
+            mod_map = {mod.id: mod.title}
+            if mod.prerequisite_module_id:
+                prereq_obj = await self.repo.get_module(mod.prerequisite_module_id, include_materials=False)
+                if prereq_obj:
+                    mod_map[prereq_obj.id] = prereq_obj.title
+            is_locked, lock_reason = await LearningModuleService(self.db, self.repo)._resolve_student_lock(
+                mod, user_id, mod_map
+            )
+            if is_locked:
+                raise ModuleLockedException(lock_reason or "Bài học đang tạm khóa.")
+
+        if not os.path.exists(mat.file_url):
+            raise LearningMaterialNotFoundException("Tệp học liệu vật lý không tồn tại trên máy chủ lưu trữ.")
+
+        return mat.file_url
