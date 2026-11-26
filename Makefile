@@ -1,8 +1,14 @@
-.PHONY: up down build logs ps restart test lint seed clean verify-headers
+.PHONY: up up-dev up-full down build logs ps restart test lint seed clean verify-headers
 
 # Infrastructure commands
 up:
 	docker compose up -d
+
+up-dev:
+	docker compose up -d postgres repomix
+
+up-full:
+	docker compose --profile full up -d
 
 down:
 	docker compose down

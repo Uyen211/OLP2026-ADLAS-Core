@@ -25,6 +25,10 @@ services:
     depends_on:
       - postgres
       - backend
+    deploy:
+      resources:
+        limits:
+          memory: 256M
 
   # Tier 1: PostgreSQL 16 with pgvector extension
   postgres:
@@ -47,10 +51,11 @@ services:
         limits:
           memory: 512M
 
-  # Tier 1: Supabase GoTrue Auth Service (Identity / JWT / TOTP)
+  # Tier 1: Supabase GoTrue Auth Service (Optional profile: full)
   auth:
     image: supabase/gotrue:v2.158.1
     container_name: adlas-auth
+    profiles: ["full"]
     restart: unless-stopped
     depends_on:
       - postgres
@@ -71,10 +76,11 @@ services:
         limits:
           memory: 128M
 
-  # Tier 1: Supabase Studio Management Web UI (Port 54323)
+  # Tier 1: Supabase Studio Management Web UI (Optional profile: tools/full, Port 54323)
   studio:
     image: supabase/studio:latest
     container_name: adlas-studio
+    profiles: ["tools", "full"]
     restart: unless-stopped
     depends_on:
       - postgres
@@ -92,10 +98,11 @@ services:
         limits:
           memory: 256M
 
-  # Tier 1: S3-Compatible Object Storage
+  # Tier 1: S3-Compatible Object Storage (Optional profile: offline-s3/full)
   minio:
     image: zenko/cloudserver:latest
     container_name: adlas-storage
+    profiles: ["offline-s3", "full"]
     restart: unless-stopped
     environment:
       SCALITY_ACCESS_KEY_ID: ${MINIO_ROOT_USER:-minio_admin}
@@ -169,7 +176,7 @@ services:
     networks:
       - adlas-network
     depends_on:
-      - backend
+      - kong
     deploy:
       resources:
         limits:

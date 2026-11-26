@@ -2,7 +2,7 @@ _format_version: "3.0"
 
 services:
   - name: backend-api
-    url: http://backend:8080/api/v1
+    url: http://backend:8080
     routes:
       - name: api-routes
         paths:
@@ -11,7 +11,7 @@ services:
     plugins:
       - name: rate-limiting
         config:
-          minute: 120
+          minute: 300
           policy: local
       - name: cors
         config:
