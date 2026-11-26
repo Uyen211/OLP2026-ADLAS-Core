@@ -4,10 +4,19 @@
  */
 
 import type {
+  AssignmentAuthoringResponse,
+  AssignmentCreateRequest,
+  AssignmentDeleteResponse,
   AssignmentDetail,
   AssignmentSummaryItem,
+  AssignmentUpdateRequest,
+  PledgeSignRequest,
+  PledgeSignResponse,
+  PledgeStatusResponse,
   PresignedUploadUrlRequest,
   PresignedUploadUrlResponse,
+  RubricResponse,
+  RubricSaveRequest,
   Submission,
   SubmissionCreateRequest,
   SubmissionReviewDetailResponse,
@@ -144,6 +153,112 @@ export const assessmentService = {
   getSubmissionReview(submissionId: string): Promise<SubmissionReviewDetailResponse> {
     return httpRequest<SubmissionReviewDetailResponse>(
       `/assessments/submissions/${submissionId}/review`
+    );
+  },
+
+  /**
+   * [Giảng viên] Tạo mới bài tập / đồ án (Bản nháp hoặc Xuất bản ngay)
+   */
+  createAssignment(
+    courseId: string,
+    payload: AssignmentCreateRequest
+  ): Promise<AssignmentAuthoringResponse> {
+    return httpRequest<AssignmentAuthoringResponse>(
+      `/assessments/courses/${courseId}/assignments`,
+      {
+        method: "POST",
+        body: payload,
+      }
+    );
+  },
+
+  /**
+   * [Giảng viên] Cập nhật cấu hình bài tập / đồ án
+   */
+  updateAssignment(
+    assignmentId: string,
+    payload: AssignmentUpdateRequest
+  ): Promise<AssignmentAuthoringResponse> {
+    return httpRequest<AssignmentAuthoringResponse>(
+      `/assessments/assignments/${assignmentId}`,
+      {
+        method: "PUT",
+        body: payload,
+      }
+    );
+  },
+
+  /**
+   * [Giảng viên] Xuất bản bài tập từ trạng thái Bản nháp
+   */
+  publishAssignment(assignmentId: string): Promise<AssignmentAuthoringResponse> {
+    return httpRequest<AssignmentAuthoringResponse>(
+      `/assessments/assignments/${assignmentId}/publish`,
+      {
+        method: "POST",
+      }
+    );
+  },
+
+  /**
+   * [Giảng viên] Xóa bài tập khi chưa có sinh viên nào nộp bài
+   */
+  deleteAssignment(assignmentId: string): Promise<AssignmentDeleteResponse> {
+    return httpRequest<AssignmentDeleteResponse>(
+      `/assessments/assignments/${assignmentId}`,
+      {
+        method: "DELETE",
+      }
+    );
+  },
+
+  /**
+   * Lấy cấu trúc Rubric 4 mức độ và trạng thái đóng băng của bài tập
+   */
+  getRubric(assignmentId: string): Promise<RubricResponse> {
+    return httpRequest<RubricResponse>(
+      `/assessments/assignments/${assignmentId}/rubric`
+    );
+  },
+
+  /**
+   * [Giảng viên] Tạo mới hoặc cập nhật bảng Rubric 4 mức độ (tổng điểm bắt buộc 10.0)
+   */
+  saveRubric(
+    assignmentId: string,
+    payload: RubricSaveRequest
+  ): Promise<RubricResponse> {
+    return httpRequest<RubricResponse>(
+      `/assessments/assignments/${assignmentId}/rubric`,
+      {
+        method: "PUT",
+        body: payload,
+      }
+    );
+  },
+
+  /**
+   * Lấy trạng thái ký cam kết liêm chính học thuật và danh sách 3 điều khoản
+   */
+  getIntegrityPledge(assignmentId: string): Promise<PledgeStatusResponse> {
+    return httpRequest<PledgeStatusResponse>(
+      `/assessments/assignments/${assignmentId}/integrity-pledge`
+    );
+  },
+
+  /**
+   * [Sinh viên] Ký xác nhận cam kết liêm chính học thuật điện tử (BR-11 / BR-PLG-02)
+   */
+  signIntegrityPledge(
+    assignmentId: string,
+    payload: PledgeSignRequest
+  ): Promise<PledgeSignResponse> {
+    return httpRequest<PledgeSignResponse>(
+      `/assessments/assignments/${assignmentId}/integrity-pledge`,
+      {
+        method: "POST",
+        body: payload,
+      }
     );
   },
 };

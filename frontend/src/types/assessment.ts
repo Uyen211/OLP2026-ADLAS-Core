@@ -42,6 +42,10 @@ export interface Submission {
   status: "PENDING_VIVA" | "IN_VIVA" | "VIVA_COMPLETED" | "SUBMITTED" | "GRADED" | string;
 }
 
+export type AIPolicyLevel = "GREEN" | "YELLOW" | "RED";
+export type SubmissionType = "FILE_UPLOAD" | "GIT_REPOSITORY" | "HYBRID";
+export type MasteryLevelCode = "EXCELLENT" | "GOOD" | "PROFICIENT" | "INSUFFICIENT";
+
 export interface AssignmentSummaryItem {
   id: string;
   course_id: string;
@@ -51,7 +55,13 @@ export interface AssignmentSummaryItem {
   late_penalty_percent: number;
   is_viva_required: boolean;
   viva_question_count: number;
-  ai_policy_level: "GREEN" | "YELLOW" | "RED" | string;
+  ai_policy_level: AIPolicyLevel | string;
+  is_published?: boolean;
+  available_from?: string | null;
+  max_points?: number;
+  max_attempts?: number | null;
+  has_rubric?: boolean;
+  rubric_is_frozen?: boolean;
   submission_count: number;
   latest_status?: string | null;
 }
@@ -62,7 +72,7 @@ export interface AssignmentDetail {
   title: string;
   instructions: string;
   attachment_url?: string | null;
-  submission_type: string;
+  submission_type: SubmissionType | string;
   allowed_extensions: string;
   max_file_size_mb: number;
   due_date: string;
@@ -70,9 +80,163 @@ export interface AssignmentDetail {
   late_penalty_percent: number;
   is_viva_required: boolean;
   viva_question_count: number;
-  ai_policy_level: "GREEN" | "YELLOW" | "RED" | string;
+  ai_policy_level: AIPolicyLevel | string;
   my_role?: "INSTRUCTOR" | "STUDENT" | string | null;
+  is_published?: boolean;
+  available_from?: string | null;
+  max_points?: number;
+  is_group_assignment?: boolean;
+  is_transfer_task?: boolean;
+  max_attempts?: number | null;
+  has_rubric?: boolean;
+  rubric_is_frozen?: boolean;
   submissions: Submission[];
+}
+
+// ----------------------------------------------------------------------
+// Assignment Authoring (T2-P-M3-01)
+// ----------------------------------------------------------------------
+export interface AssignmentCreateRequest {
+  title: string;
+  instructions: string;
+  attachment_url?: string | null;
+  submission_type?: SubmissionType;
+  allowed_extensions?: string;
+  max_file_size_mb?: number;
+  is_group_assignment?: boolean;
+  is_transfer_task?: boolean;
+  available_from?: string | null;
+  due_date: string;
+  until_date?: string | null;
+  late_penalty_percent?: number;
+  is_viva_required?: boolean;
+  viva_question_count?: number;
+  ai_policy_level?: AIPolicyLevel;
+  max_attempts?: number | null;
+  publish?: boolean;
+}
+
+export interface AssignmentUpdateRequest {
+  title?: string;
+  instructions?: string;
+  attachment_url?: string | null;
+  submission_type?: SubmissionType;
+  allowed_extensions?: string;
+  max_file_size_mb?: number;
+  is_group_assignment?: boolean;
+  is_transfer_task?: boolean;
+  available_from?: string | null;
+  due_date?: string;
+  until_date?: string | null;
+  late_penalty_percent?: number;
+  is_viva_required?: boolean;
+  viva_question_count?: number;
+  ai_policy_level?: AIPolicyLevel;
+  max_attempts?: number | null;
+}
+
+export interface AssignmentAuthoringResponse {
+  id: string;
+  course_id: string;
+  title: string;
+  instructions: string;
+  attachment_url?: string | null;
+  submission_type: SubmissionType | string;
+  allowed_extensions: string;
+  max_file_size_mb: number;
+  is_group_assignment: boolean;
+  is_transfer_task: boolean;
+  available_from?: string | null;
+  due_date: string;
+  until_date?: string | null;
+  late_penalty_percent: number;
+  is_viva_required: boolean;
+  viva_question_count: number;
+  ai_policy_level: AIPolicyLevel | string;
+  is_published: boolean;
+  max_points: number;
+  max_attempts?: number | null;
+}
+
+export interface AssignmentDeleteResponse {
+  id: string;
+  deleted: boolean;
+}
+
+// ----------------------------------------------------------------------
+// Rubric 4 Mastery Levels (T2-P-M3-02)
+// ----------------------------------------------------------------------
+export interface MasteryLevelItem {
+  level: MasteryLevelCode;
+  label?: string | null;
+  description: string;
+  points: number;
+}
+
+export interface RubricCriterionPayload {
+  title: string;
+  description?: string | null;
+  lo_id?: string | null;
+  competency_code?: string | null;
+  max_points: number;
+  rating_levels: MasteryLevelItem[];
+}
+
+export interface RubricSaveRequest {
+  title: string;
+  criteria: RubricCriterionPayload[];
+}
+
+export interface RubricCriterionResponse {
+  id: string;
+  title: string;
+  description?: string | null;
+  lo_id?: string | null;
+  competency_code?: string | null;
+  max_points: number;
+  rating_levels: MasteryLevelItem[];
+  order_index: number;
+}
+
+export interface RubricResponse {
+  assignment_id: string;
+  exists: boolean;
+  rubric_id?: string | null;
+  title?: string | null;
+  total_points: number;
+  is_frozen: boolean;
+  version: number;
+  submission_count: number;
+  criteria: RubricCriterionResponse[];
+}
+
+// ----------------------------------------------------------------------
+// Integrity Pledge (T2-P-M3-03)
+// ----------------------------------------------------------------------
+export interface PledgeTerm {
+  code: string;
+  text: string;
+}
+
+export interface PledgeSignRequest {
+  accepted: boolean;
+  self_contribution_pct: number;
+  tools_used: string[];
+  usage_description?: string | null;
+}
+
+export interface PledgeStatusResponse {
+  assignment_id: string;
+  pledge_version: string;
+  ai_policy_level: AIPolicyLevel | string;
+  terms: PledgeTerm[];
+  signed: boolean;
+  signed_at?: string | null;
+  self_contribution_pct?: number | null;
+}
+
+export interface PledgeSignResponse extends PledgeStatusResponse {
+  pledge_id: string;
 }
 
 export interface VivaQuestion {
