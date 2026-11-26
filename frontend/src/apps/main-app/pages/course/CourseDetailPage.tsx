@@ -18,6 +18,7 @@ import {
   FileCheck2,
   Lock,
   Plus,
+  Presentation,
   Save,
   Target,
   Trash2,
@@ -45,8 +46,9 @@ import { TeacherLayout } from "../../layouts/TeacherLayout";
 import { CloneTemplateModal } from "./CloneTemplateModal";
 import { LoFormModal } from "./LoFormModal";
 import { StudentRosterPage } from "./StudentRosterPage";
+import { CourseMaterialsTab } from "../learning/CourseMaterialsTab";
 
-type DetailTab = "syllabus" | "los" | "assignments" | "roster";
+type DetailTab = "syllabus" | "los" | "materials" | "assignments" | "roster";
 
 const STATUS_BADGE: Record<CourseStatus, { label: string; className: string }> = {
   UNPUBLISHED: {
@@ -235,6 +237,11 @@ export const CourseDetailPage: React.FC = () => {
       label: "Chuẩn đầu ra",
       count: course?.learning_objectives.length ?? 0,
       icon: <Target className="h-4 w-4" />,
+    },
+    {
+      value: "materials",
+      label: "Học liệu & Bài giảng",
+      icon: <Presentation className="h-4 w-4" />,
     },
     {
       value: "assignments",
@@ -595,6 +602,14 @@ export const CourseDetailPage: React.FC = () => {
                 </div>
               )}
             </MmCard>
+          )}
+
+          {activeTab === "materials" && (
+            <CourseMaterialsTab
+              courseId={course.id}
+              canEdit={canEdit}
+              availableLos={course.learning_objectives}
+            />
           )}
 
           {activeTab === "assignments" && (
