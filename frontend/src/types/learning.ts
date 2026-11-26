@@ -76,3 +76,56 @@ export interface MaterialUploadResult {
   size_bytes: number;
   material_type: MaterialType;
 }
+
+export interface MaterialCheckpoint {
+  id: string;
+  material_id: string;
+  lo_id?: string | null;
+  stop_time_seconds?: number | null;
+  section_index?: number | null;
+  question_text: string;
+  question_type: string;
+  options?: Record<string, string> | null;
+  correct_option?: string | null;
+  expected_concept?: string | null;
+  is_blocking: boolean;
+  time_limit_seconds: number;
+  rewind_seconds: number;
+  is_passed?: boolean;
+  created_at: string;
+}
+
+export interface CheckpointCreatePayload {
+  question_text: string;
+  question_type?: string;
+  stop_time_seconds?: number | null;
+  section_index?: number | null;
+  options: Record<string, string>;
+  correct_option: string;
+  expected_concept?: string | null;
+  is_blocking?: boolean;
+  time_limit_seconds?: number;
+  rewind_seconds?: number;
+  lo_id?: string | null;
+}
+
+export interface CheckpointUpdatePayload {
+  question_text?: string;
+  stop_time_seconds?: number | null;
+  section_index?: number | null;
+  options?: Record<string, string>;
+  correct_option?: string;
+  expected_concept?: string | null;
+  is_blocking?: boolean;
+  time_limit_seconds?: number;
+  rewind_seconds?: number;
+  lo_id?: string | null;
+}
+
+export interface CheckpointSubmitResult {
+  checkpoint_id: string;
+  is_correct: boolean;
+  is_passed: boolean;
+  rewind_seconds: number;
+  message: string;
+}

@@ -8,6 +8,7 @@ import {
   AlertCircle,
   ArrowDown,
   ArrowUp,
+  BookmarkCheck,
   ChevronDown,
   ChevronRight,
   Clock,
@@ -31,6 +32,7 @@ import { ConfirmModal } from "../../components/ConfirmModal";
 import { MmButton } from "../../components/MmButton";
 import { MmCard } from "../../components/MmCard";
 import { showToast } from "../../components/Toast";
+import { CheckpointEditorModal } from "./CheckpointEditorModal";
 import { MaterialFormModal } from "./MaterialFormModal";
 import { MaterialViewerModal } from "./MaterialViewerModal";
 import { ModuleFormModal } from "./ModuleFormModal";
@@ -76,6 +78,7 @@ export const CourseMaterialsTab: React.FC<CourseMaterialsTabProps> = ({
   const [materialModalOpen, setMaterialModalOpen] = useState(false);
   const [targetModuleId, setTargetModuleId] = useState<string>("");
   const [editingMaterial, setEditingMaterial] = useState<LearningMaterial | null>(null);
+  const [checkpointMaterial, setCheckpointMaterial] = useState<LearningMaterial | null>(null);
   const [viewingMaterial, setViewingMaterial] = useState<LearningMaterial | null>(null);
 
   // Deletion confirm modals
@@ -573,6 +576,15 @@ export const CourseMaterialsTab: React.FC<CourseMaterialsTabProps> = ({
                                     <MmButton
                                       variant="ghost"
                                       size="sm"
+                                      onClick={() => setCheckpointMaterial(mat)}
+                                      title="Biên tập điểm dừng kiểm tra"
+                                    >
+                                      <BookmarkCheck className="h-3.5 w-3.5 text-amber-500" />
+                                    </MmButton>
+
+                                    <MmButton
+                                      variant="ghost"
+                                      size="sm"
                                       onClick={() => {
                                         setTargetModuleId(mod.id);
                                         setEditingMaterial(mat);
@@ -652,6 +664,13 @@ export const CourseMaterialsTab: React.FC<CourseMaterialsTabProps> = ({
         loading={actionLoading}
         onCancel={() => setDeletingMaterial(null)}
         onConfirm={handleDeleteMaterial}
+      />
+
+      <CheckpointEditorModal
+        open={Boolean(checkpointMaterial)}
+        courseId={courseId}
+        material={checkpointMaterial}
+        onClose={() => setCheckpointMaterial(null)}
       />
 
       <MaterialViewerModal

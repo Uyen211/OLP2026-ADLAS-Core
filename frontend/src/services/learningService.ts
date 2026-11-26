@@ -4,8 +4,12 @@
  */
 
 import type {
+  CheckpointCreatePayload,
+  CheckpointSubmitResult,
+  CheckpointUpdatePayload,
   LearningMaterial,
   LearningModule,
+  MaterialCheckpoint,
   MaterialCreatePayload,
   MaterialUpdatePayload,
   MaterialUploadResult,
@@ -141,6 +145,51 @@ export const learningService = {
     return httpRequest<{ status: string; material_id: string }>(
       `/courses/${courseId}/learning/materials/${materialId}/complete`,
       { method: "POST" }
+    );
+  },
+
+  listCheckpoints(courseId: string, materialId: string): Promise<MaterialCheckpoint[]> {
+    return httpRequest<MaterialCheckpoint[]>(
+      `/courses/${courseId}/learning/materials/${materialId}/checkpoints`
+    );
+  },
+
+  createCheckpoint(
+    courseId: string,
+    materialId: string,
+    payload: CheckpointCreatePayload
+  ): Promise<MaterialCheckpoint> {
+    return httpRequest<MaterialCheckpoint>(
+      `/courses/${courseId}/learning/materials/${materialId}/checkpoints`,
+      { method: "POST", body: payload }
+    );
+  },
+
+  updateCheckpoint(
+    courseId: string,
+    checkpointId: string,
+    payload: CheckpointUpdatePayload
+  ): Promise<MaterialCheckpoint> {
+    return httpRequest<MaterialCheckpoint>(
+      `/courses/${courseId}/learning/checkpoints/${checkpointId}`,
+      { method: "PUT", body: payload }
+    );
+  },
+
+  deleteCheckpoint(courseId: string, checkpointId: string): Promise<void> {
+    return httpRequest<void>(`/courses/${courseId}/learning/checkpoints/${checkpointId}`, {
+      method: "DELETE",
+    });
+  },
+
+  submitCheckpoint(
+    courseId: string,
+    checkpointId: string,
+    selectedOption: string
+  ): Promise<CheckpointSubmitResult> {
+    return httpRequest<CheckpointSubmitResult>(
+      `/courses/${courseId}/learning/checkpoints/${checkpointId}/submit`,
+      { method: "POST", body: { selected_option: selectedOption } }
     );
   },
 };
