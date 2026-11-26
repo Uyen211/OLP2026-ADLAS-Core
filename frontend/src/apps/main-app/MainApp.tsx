@@ -34,6 +34,7 @@ import { VivaSandboxPage } from "./pages/assessment/VivaSandboxPage";
 import { ExamManagementPage } from "./pages/examination/ExamManagementPage";
 import { ExamResultPage } from "./pages/examination/ExamResultPage";
 import { ExamTakingPage } from "./pages/examination/ExamTakingPage";
+import { GradebookPage } from "./pages/gradebook/GradebookPage";
 
 const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const accessToken = useAuthStore((s) => s.accessToken);
@@ -113,6 +114,14 @@ export const MainApp: React.FC = () => {
           element={
             <ProtectedRoute>
               <VivaSandboxPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/courses/:courseId/gradebook"
+          element={
+            <ProtectedRoute>
+              <GradebookPage />
             </ProtectedRoute>
           }
         />

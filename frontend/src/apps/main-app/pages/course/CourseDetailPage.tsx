@@ -327,6 +327,13 @@ export const CourseDetailPage: React.FC = () => {
               </div>
 
               <div className="flex flex-wrap items-center gap-2">
+                <Link to={`/courses/${course.id}/gradebook`}>
+                  <MmButton variant="secondary">
+                    <FileCheck2 className="h-4 w-4" />
+                    <span>{isInstructor ? "Sổ điểm & SpeedGrader" : "Bảng điểm của tôi"}</span>
+                  </MmButton>
+                </Link>
+
                 <Link to={`/courses/${course.id}/exams`}>
                   <MmButton variant="secondary">
                     <ClipboardCheck className="h-4 w-4" />
@@ -637,9 +644,21 @@ export const CourseDetailPage: React.FC = () => {
                           {item.latest_status ? ` · Trạng thái: ${item.latest_status}` : ""}
                         </p>
                       </div>
-                      <MmButton variant="secondary" size="sm">
-                        <span>Mở bài tập</span>
-                      </MmButton>
+                      <div className="flex items-center gap-2">
+                        {isInstructor && (
+                          <Link
+                            to={`/courses/${course.id}/assignments/${item.id}/speedgrader`}
+                            onClick={(e) => e.stopPropagation()}
+                          >
+                            <MmButton variant="brand" size="sm">
+                              <span>Mở SpeedGrader</span>
+                            </MmButton>
+                          </Link>
+                        )}
+                        <MmButton variant="secondary" size="sm">
+                          <span>Mở bài tập</span>
+                        </MmButton>
+                      </div>
                     </Link>
                   ))}
                 </div>
