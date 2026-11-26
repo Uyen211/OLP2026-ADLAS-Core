@@ -65,6 +65,7 @@ export const CourseMaterialsTab: React.FC<CourseMaterialsTabProps> = ({
 }) => {
   const [modules, setModules] = useState<LearningModule[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [expandedModules, setExpandedModules] = useState<Record<string, boolean>>({});
 
   // Modals state
@@ -82,6 +83,7 @@ export const CourseMaterialsTab: React.FC<CourseMaterialsTabProps> = ({
 
   const loadModules = useCallback(async () => {
     setLoading(true);
+    setLoadError(null);
     try {
       const data = await learningService.listModules(courseId);
       setModules(data);
@@ -92,10 +94,9 @@ export const CourseMaterialsTab: React.FC<CourseMaterialsTabProps> = ({
       });
       setExpandedModules((prev) => ({ ...initialExpanded, ...prev }));
     } catch (err) {
-      showToast(
-        "error",
-        err instanceof ApiError ? err.message : "Không thể tải danh sách bài học."
-      );
+      const msg = err instanceof ApiError ? err.message : "Không thể tải danh sách bài học.";
+      setLoadError(msg);
+      showToast("error", msg);
     } finally {
       setLoading(false);
     }
@@ -210,9 +211,27 @@ export const CourseMaterialsTab: React.FC<CourseMaterialsTabProps> = ({
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center py-16">
+      <div className="flex flex-col items-center justify-center gap-3 py-16">
         <div className="h-8 w-8 animate-spin rounded-full border-2 border-mm-brand border-t-transparent" />
+        <p className="font-mm-ui text-sm text-mm-text-muted">Đang tải danh sách bài học và học liệu...</p>
       </div>
+    );
+  }
+
+  if (loadError) {
+    return (
+      <MmCard variant="standard" radius="card" padding="lg">
+        <div className="flex flex-col items-center justify-center py-10 text-center">
+          <AlertCircle className="mb-3 h-10 w-10 text-mm-danger" />
+          <h3 className="font-mm-mid text-base font-medium text-mm-heading">
+            Không thể tải dữ liệu học liệu
+          </h3>
+          <p className="mt-1 max-w-md font-mm-ui text-sm text-mm-text-secondary">{loadError}</p>
+          <MmButton variant="secondary" className="mt-4" onClick={loadModules}>
+            Thử lại
+          </MmButton>
+        </div>
+      </MmCard>
     );
   }
 
