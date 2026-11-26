@@ -50,11 +50,11 @@ async def _reset_database(db_url: str) -> None:
 
     conn = await asyncpg.connect(clean_url, timeout=15)
     try:
-        # 1. Apply any pending migration extensions (03, 04, 05)
+        # 1. Apply any pending migration extensions (03, 04, 05, 06)
         init_scripts_dir = os.path.join(REPO_ROOT, "infra", "database", "init-scripts")
         if os.path.exists(init_scripts_dir):
             for filename in sorted(os.listdir(init_scripts_dir)):
-                if filename.startswith(("03", "04", "05")) and filename.endswith(".sql"):
+                if filename.startswith(("03", "04", "05", "06")) and filename.endswith(".sql"):
                     sql_path = os.path.join(init_scripts_dir, filename)
                     with open(sql_path, "r", encoding="utf-8") as f:  # noqa: ASYNC230
                         print(f"  [SCHEMA] Applying extension: {filename}...")
