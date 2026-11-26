@@ -341,3 +341,21 @@ async def toggle_material_publish_status(
         user_id=current_user.user.id,
         is_admin=_is_admin(current_user),
     )
+
+
+@router.post("/materials/{material_id}/complete")
+async def complete_learning_material(
+    course_id: uuid.UUID,
+    material_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: CurrentUser = Depends(get_current_user),
+):
+    """Record material completion for student to satisfy module prerequisites."""
+    service = LearningMaterialService(db)
+    await service.complete_material(
+        course_id=course_id,
+        material_id=material_id,
+        user_id=current_user.user.id,
+        is_admin=_is_admin(current_user),
+    )
+    return {"status": "completed", "material_id": str(material_id)}

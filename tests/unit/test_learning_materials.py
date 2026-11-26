@@ -437,3 +437,34 @@ async def test_update_material_clears_lo_id_and_file_url_when_null_sent(
 
     assert mat.lo_id is None
     assert mat.file_url is None
+
+
+@pytest.mark.asyncio
+async def test_student_complete_material_records_progress(mock_db, course_id, student_id):
+    """Student completing an unlocked published material persists progress via repository."""
+    from datetime import datetime, timezone
+    from app.modules.learning.models import LearningMaterial
+
+    mod = LearningModule(id=uuid.uuid4(), course_id=course_id, title="Chương 1", is_published=True)
+    mat = LearningMaterial(
+        id=uuid.uuid4(),
+        module_id=mod.id,
+        title="Slide 1",
+        material_type=MaterialType.SLIDE.value,
+        is_mandatory=True,
+        is_published=True,
+        created_at=datetime.now(timezone.utc),
+    )
+    repo = MagicMock(spec=LearningRepository)
+    repo.get_material = AsyncMock(return_value=mat)
+    repo.get_module = AsyncMock(return_value=mod)
+    repo.mark_material_completed = AsyncMock()
+
+    course_svc = MagicMock()
+    course_svc.assert_course_role = AsyncMock(return_value=ContextualRole.STUDENT)
+
+    service = LearningMaterialService(mock_db, repo=repo)
+    service.course_service = course_svc
+
+    await service.complete_material(course_id, mat.id, student_id)
+    repo.mark_material_completed.assert_awaited_once_with(student_id, mat.id)

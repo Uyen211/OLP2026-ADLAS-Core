@@ -754,4 +754,47 @@ class LearningMaterialService:
         if not resolved_path or not os.path.exists(resolved_path):
             raise LearningMaterialNotFoundException("Tệp học liệu vật lý không tồn tại trên máy chủ lưu trữ.")
 
+        if is_student:
+            await self.repo.mark_material_completed(user_id, material_id)
+
         return resolved_path
+
+    async def complete_material(
+        self,
+        course_id: uuid.UUID,
+        material_id: uuid.UUID,
+        user_id: uuid.UUID,
+        is_admin: bool = False,
+    ) -> None:
+        """Mark a learning material as completed by the student to unlock downstream modules."""
+        role = await self.course_service.assert_course_role(
+            course_id=course_id,
+            user_id=user_id,
+            allowed_roles=[ContextualRole.INSTRUCTOR, ContextualRole.STUDENT],
+            is_admin=is_admin,
+        )
+
+        mat = await self.repo.get_material(material_id)
+        if not mat:
+            raise LearningMaterialNotFoundException()
+
+        mod = await self.repo.get_module(mat.module_id)
+        if not mod or mod.course_id != course_id:
+            raise LearningMaterialNotFoundException()
+
+        is_student = (role == ContextualRole.STUDENT and not is_admin)
+        if is_student:
+            if not mat.is_published or not mod.is_published:
+                raise LearningMaterialNotFoundException()
+            mod_map = {mod.id: mod.title}
+            if mod.prerequisite_module_id:
+                prereq_obj = await self.repo.get_module(mod.prerequisite_module_id, include_materials=False)
+                if prereq_obj:
+                    mod_map[prereq_obj.id] = prereq_obj.title
+            is_locked, lock_reason = await LearningModuleService(self.db, self.repo)._resolve_student_lock(
+                mod, user_id, mod_map
+            )
+            if is_locked:
+                raise ModuleLockedException(lock_reason or "Bài học đang tạm khóa.")
+
+        await self.repo.mark_material_completed(user_id, material_id)

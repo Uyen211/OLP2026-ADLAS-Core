@@ -181,3 +181,18 @@ class LearningRepository:
         )
         completed_count = prog_res.scalar() or 0
         return completed_count >= len(mandatory_ids)
+
+    async def mark_material_completed(
+        self,
+        user_id: uuid.UUID,
+        material_id: uuid.UUID,
+    ) -> None:
+        """Upsert student material completion in learning.student_material_progress."""
+        stmt = text("""
+            INSERT INTO learning.student_material_progress (user_id, material_id, is_completed, completed_at)
+            VALUES (:user_id, :material_id, TRUE, NOW())
+            ON CONFLICT (user_id, material_id)
+            DO UPDATE SET is_completed = TRUE, completed_at = NOW()
+        """)
+        await self.db.execute(stmt, {"user_id": str(user_id), "material_id": str(material_id)})
+        await self.db.flush()
