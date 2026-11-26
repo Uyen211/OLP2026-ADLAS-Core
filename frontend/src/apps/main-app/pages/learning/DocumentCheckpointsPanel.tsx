@@ -59,17 +59,17 @@ export const DocumentCheckpointsPanel: React.FC<DocumentCheckpointsPanelProps> =
   };
 
   return (
-    <div className="space-y-3 rounded-mm border border-mm-divider bg-mm-surface p-4">
-      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-mm-divider pb-3">
+    <div className="space-y-4 rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 pb-3.5">
         <div className="flex items-center gap-2">
-          <HelpCircle className="h-4 w-4 text-mm-brand" />
-          <h4 className="text-sm font-semibold text-mm-heading">
+          <HelpCircle className="h-4 w-4 text-blue-600" />
+          <h4 className="text-sm font-bold text-slate-900">
             Kiểm tra mức độ hiểu tài liệu ({checkpoints.filter((c) => c.is_passed).length}/{checkpoints.length} đã đạt)
           </h4>
         </div>
 
         <MmButton
-          variant={allBlockingPassed ? "primary" : "secondary"}
+          variant={allBlockingPassed ? "brand" : "secondary"}
           size="sm"
           disabled={!allBlockingPassed || completing || isCompleted}
           onClick={onCompleteMaterial}
@@ -92,7 +92,7 @@ export const DocumentCheckpointsPanel: React.FC<DocumentCheckpointsPanelProps> =
       </div>
 
       {checkpoints.length === 0 ? (
-        <p className="text-xs text-mm-text-muted">
+        <p className="text-xs text-slate-500">
           Tài liệu này không có câu hỏi kiểm tra. Bạn có thể bấm nút xác nhận hoàn thành ở góc phải.
         </p>
       ) : (
@@ -102,43 +102,45 @@ export const DocumentCheckpointsPanel: React.FC<DocumentCheckpointsPanelProps> =
             return (
               <div
                 key={chk.id}
-                className={`rounded-mm border p-3.5 ${
+                className={`rounded-xl border p-4 transition-all ${
                   chk.is_passed
-                    ? "border-emerald-500/40 bg-emerald-500/5"
-                    : "border-mm-border bg-mm-bg/40"
+                    ? "border-emerald-200 bg-emerald-50/40"
+                    : "border-slate-200 bg-white shadow-2xs hover:border-slate-300"
                 }`}
               >
-                <div className="mb-2 flex items-center justify-between gap-2 text-xs">
+                <div className="mb-2.5 flex items-center justify-between gap-2 text-xs">
                   <div className="flex items-center gap-2">
-                    <span className="rounded bg-mm-brand/10 px-2 py-0.5 font-semibold text-mm-brand">
+                    <span className="rounded-md bg-blue-50 border border-blue-100 px-2 py-0.5 font-mono text-xs font-bold text-blue-600">
                       Câu {idx + 1} • Mục {chk.section_index ?? 1}
                     </span>
                     <span
-                      className={`rounded px-1.5 py-0.5 text-[11px] font-medium ${
-                        chk.is_blocking ? "bg-red-500/10 text-red-600" : "bg-slate-500/10 text-slate-500"
+                      className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ${
+                        chk.is_blocking
+                          ? "bg-rose-50 border border-rose-200 text-rose-700"
+                          : "bg-slate-100 border border-slate-200 text-slate-600"
                       }`}
                     >
                       {chk.is_blocking ? "Bắt buộc" : "Tùy chọn"}
                     </span>
                   </div>
                   {chk.is_passed && (
-                    <span className="inline-flex items-center gap-1 font-medium text-emerald-600">
+                    <span className="inline-flex items-center gap-1 font-semibold text-emerald-600">
                       <CheckCircle2 className="h-3.5 w-3.5" />
                       Đã đạt
                     </span>
                   )}
                 </div>
 
-                <p className="mb-2.5 text-sm font-medium text-mm-heading">{chk.question_text}</p>
+                <p className="mb-3 text-sm font-semibold text-slate-900 leading-snug">{chk.question_text}</p>
 
-                <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-2">
+                <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                   {Object.entries(chk.options || {}).map(([key, val]) => (
                     <label
                       key={key}
-                      className={`flex cursor-pointer items-start gap-2 rounded border px-3 py-2 text-xs transition-colors ${
+                      className={`flex cursor-pointer items-start gap-2.5 rounded-lg border p-2.5 text-xs transition-all ${
                         selectedMap[chk.id] === key
-                          ? "border-mm-brand bg-mm-brand/10 text-mm-heading"
-                          : "border-mm-border bg-mm-surface text-mm-text hover:bg-mm-surface-alt/40"
+                          ? "border-blue-500 bg-blue-50/80 text-blue-900 ring-1 ring-blue-500 font-medium"
+                          : "border-slate-200 bg-slate-50/60 text-slate-700 hover:border-slate-300 hover:bg-slate-100/60"
                       }`}
                     >
                       <input
@@ -147,26 +149,27 @@ export const DocumentCheckpointsPanel: React.FC<DocumentCheckpointsPanelProps> =
                         checked={selectedMap[chk.id] === key}
                         disabled={Boolean(chk.is_passed)}
                         onChange={() => setSelectedMap((p) => ({ ...p, [chk.id]: key }))}
+                        className="mt-0.5"
                       />
                       <span>
-                        <strong>{key}.</strong> {val}
+                        <strong className="text-slate-900">{key}.</strong> {val}
                       </span>
                     </label>
                   ))}
                 </div>
 
                 {!chk.is_passed && (
-                  <div className="mt-2.5 flex items-center justify-between gap-2">
+                  <div className="mt-3 flex items-center justify-between gap-2 border-t border-slate-100 pt-2.5">
                     <div>
                       {fb && !fb.ok && (
-                        <span className="inline-flex items-center gap-1 text-xs text-amber-600">
+                        <span className="inline-flex items-center gap-1 text-xs font-medium text-rose-600">
                           <AlertTriangle className="h-3.5 w-3.5" />
                           Chưa chính xác! Hãy đọc lại nội dung và thử lại.
                         </span>
                       )}
                     </div>
                     <MmButton
-                      variant="secondary"
+                      variant="brand"
                       size="sm"
                       disabled={submittingId === chk.id}
                       onClick={() => handleSubmitOne(chk)}

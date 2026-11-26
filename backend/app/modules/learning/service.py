@@ -875,10 +875,14 @@ class LearningMaterialService:
         sections: list[dict] = []
         current_title = "Giới thiệu"
         current_lines: list[str] = []
+        in_code_block = False
 
         for line in raw.splitlines():
             stripped = line.strip()
-            if stripped.startswith("#"):
+            if stripped.startswith("```"):
+                in_code_block = not in_code_block
+                current_lines.append(line)
+            elif not in_code_block and stripped.startswith("#"):
                 heading_text = stripped.lstrip("#").strip()
                 if current_lines:
                     sections.append(
@@ -891,8 +895,8 @@ class LearningMaterialService:
                     )
                     current_lines = []
                 current_title = heading_text or current_title
-            elif stripped:
-                current_lines.append(stripped)
+            else:
+                current_lines.append(line)
 
         if current_lines or not sections:
             sections.append(

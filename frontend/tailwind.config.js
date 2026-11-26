@@ -31,6 +31,12 @@ export default {
           muted: "#94a3b8",
         },
         mm: {
+          surface: "#ffffff",
+          "surface-alt": "#f8fafc",
+          brand: "#1456f0",
+          "brand-light": "#eff6ff",
+          error: "#d92d20",
+          "error-bg": "#fef2f2",
           bg: "#ffffff",
           "btn-secondary": "#f0f0f0",
           divider: "#f2f3f5",
@@ -66,6 +72,8 @@ export default {
       },
       borderRadius: {
         pill: "9999px",
+        mm: "12px",
+        "mm-lg": "16px",
         "mm-tag": "4px",
         "mm-btn": "8px",
         "mm-panel": "13px",

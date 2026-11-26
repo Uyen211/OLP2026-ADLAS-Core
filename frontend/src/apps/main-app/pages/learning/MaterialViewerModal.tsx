@@ -232,28 +232,28 @@ export const MaterialViewerModal: React.FC<MaterialViewerModalProps> = ({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm">
-      <div className="flex max-h-[92vh] w-full max-w-6xl flex-col overflow-hidden rounded-mm border border-mm-border bg-mm-surface shadow-2xl">
+      <div className="flex max-h-[92vh] w-full max-w-6xl flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl">
         {/* Header */}
-        <div className="flex items-start justify-between gap-4 border-b border-mm-divider bg-mm-surface-alt/40 px-5 py-4">
-          <div className="flex items-start gap-3">
-            <div className="mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-mm border border-mm-divider bg-mm-surface">
+        <div className="flex items-start justify-between gap-4 border-b border-slate-100 bg-white px-6 py-4">
+          <div className="flex items-start gap-3.5">
+            <div className="mt-0.5 flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-blue-100 bg-blue-50 text-blue-600 shadow-xs">
               {MATERIAL_ICON[material.material_type] || <FileText className="h-5 w-5" />}
             </div>
             <div>
-              <h3 className="font-mm-mid text-base font-semibold text-mm-heading">
+              <h3 className="font-display text-base font-bold text-slate-900">
                 {material.title}
               </h3>
-              <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-mm-text-muted">
-                <span className="rounded bg-mm-surface-alt px-2 py-0.5 font-medium border border-mm-divider">
+              <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-slate-500">
+                <span className="rounded-full bg-slate-100 px-2.5 py-0.5 font-semibold text-slate-700 border border-slate-200">
                   {material.material_type}
                 </span>
-                <span className="flex items-center gap-1">
-                  <Clock className="h-3.5 w-3.5" />
+                <span className="flex items-center gap-1 font-medium">
+                  <Clock className="h-3.5 w-3.5 text-slate-400" />
                   {material.est_duration_minutes} phút
                 </span>
                 {matchingLo && (
                   <span className="flex items-center gap-1.5">
-                    <span className="font-mm-mono font-semibold text-mm-primary">
+                    <span className="font-mono font-bold text-blue-600">
                       {matchingLo.code}
                     </span>
                     <BloomBadge level={matchingLo.bloom_level} />
@@ -266,7 +266,7 @@ export const MaterialViewerModal: React.FC<MaterialViewerModalProps> = ({
           <button
             type="button"
             onClick={onClose}
-            className="rounded-mm p-1.5 text-mm-text-muted transition-colors hover:bg-mm-surface-alt hover:text-mm-heading"
+            className="rounded-lg p-2 text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700"
             aria-label="Đóng trình xem"
           >
             <X className="h-5 w-5" />
@@ -274,21 +274,21 @@ export const MaterialViewerModal: React.FC<MaterialViewerModalProps> = ({
         </div>
 
         {/* Content Body */}
-        <div className="flex-1 overflow-y-auto bg-mm-bg/50 p-5">
+        <div className="flex-1 overflow-y-auto bg-slate-50/80 p-6">
           {!fileUrl ? (
-            <div className="flex flex-col items-center justify-center py-16 text-center text-sm text-mm-text-muted">
-              <FileText className="mb-2 h-10 w-10 opacity-40" />
+            <div className="flex flex-col items-center justify-center py-16 text-center text-sm text-slate-500">
+              <FileText className="mb-2 h-10 w-10 opacity-40 text-slate-400" />
               <p>Học liệu này chưa có tệp đính kèm hoặc liên kết.</p>
             </div>
           ) : loading ? (
-            <div className="flex flex-col items-center justify-center py-20 text-sm text-mm-text-muted">
-              <Loader2 className="mb-3 h-8 w-8 animate-spin text-mm-brand" />
+            <div className="flex flex-col items-center justify-center py-20 text-sm text-slate-500">
+              <Loader2 className="mb-3 h-8 w-8 animate-spin text-blue-600" />
               <p>Đang tải nội dung học liệu...</p>
             </div>
           ) : error ? (
-            <div className="flex flex-col items-center justify-center gap-3 rounded-mm border border-mm-error/30 bg-mm-error-bg/40 p-8 text-center">
-              <AlertCircle className="h-9 w-9 text-mm-error" />
-              <p className="text-sm font-medium text-mm-heading">{error}</p>
+            <div className="flex flex-col items-center justify-center gap-3 rounded-xl border border-rose-200 bg-rose-50 p-8 text-center">
+              <AlertCircle className="h-9 w-9 text-rose-600" />
+              <p className="text-sm font-medium text-slate-900">{error}</p>
               <MmButton variant="secondary" size="sm" onClick={() => onDownload(material)}>
                 <Download className="h-4 w-4" />
                 <span>Thử tải về tệp gốc</span>
@@ -308,7 +308,7 @@ export const MaterialViewerModal: React.FC<MaterialViewerModalProps> = ({
               <div className="lg:col-span-7">
                 {isExternalUrl ? (
                   youtubeEmbed ? (
-                    <div className="aspect-video w-full overflow-hidden rounded-mm border border-mm-divider bg-black">
+                    <div className="aspect-video w-full overflow-hidden rounded-2xl border border-slate-800 bg-black shadow-lg">
                       <iframe
                         src={youtubeEmbed}
                         title={material.title}
@@ -318,17 +318,17 @@ export const MaterialViewerModal: React.FC<MaterialViewerModalProps> = ({
                       />
                     </div>
                   ) : (
-                    <div className="flex flex-col items-center justify-center gap-4 rounded-mm border border-mm-divider bg-mm-surface p-10 text-center">
-                      <ExternalLink className="h-10 w-10 text-mm-brand" />
+                    <div className="flex flex-col items-center justify-center gap-4 rounded-xl border border-slate-200 bg-white p-10 text-center shadow-sm">
+                      <ExternalLink className="h-10 w-10 text-blue-600" />
                       <div>
-                        <p className="font-medium text-mm-heading">Học liệu liên kết trực tuyến</p>
-                        <p className="mt-1 break-all text-xs text-mm-text-muted">{fileUrl}</p>
+                        <p className="font-bold text-slate-900">Học liệu liên kết trực tuyến</p>
+                        <p className="mt-1 break-all text-xs text-slate-500">{fileUrl}</p>
                       </div>
                       <a
                         href={fileUrl}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="inline-flex items-center gap-2 rounded-mm bg-mm-brand px-4 py-2 text-sm font-medium text-white hover:opacity-90"
+                        className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white transition-opacity hover:opacity-90 shadow-sm"
                       >
                         <ExternalLink className="h-4 w-4" />
                         <span>Mở liên kết trong tab mới</span>
@@ -365,8 +365,8 @@ export const MaterialViewerModal: React.FC<MaterialViewerModalProps> = ({
                     />
                   </div>
                 ) : textContent !== null ? (
-                  <div className="max-h-[65vh] overflow-y-auto rounded-mm border border-mm-divider bg-mm-surface p-6">
-                    <pre className="whitespace-pre-wrap font-sans text-sm leading-relaxed text-mm-text">
+                  <div className="max-h-[65vh] overflow-y-auto rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
+                    <pre className="whitespace-pre-wrap font-sans text-sm leading-relaxed text-slate-800">
                       {textContent}
                     </pre>
                   </div>
@@ -374,28 +374,28 @@ export const MaterialViewerModal: React.FC<MaterialViewerModalProps> = ({
                   <iframe
                     src={objectUrl}
                     title={material.title}
-                    className="h-[65vh] w-full rounded-mm border border-mm-divider bg-white"
+                    className="h-[65vh] w-full rounded-xl border border-slate-200 bg-white shadow-sm"
                   />
                 ) : isOfficeDoc ? (
-                  <div className="flex flex-col items-center justify-center gap-4 rounded-mm border border-mm-divider bg-mm-surface p-12 text-center">
+                  <div className="flex flex-col items-center justify-center gap-4 rounded-xl border border-slate-200 bg-white p-12 text-center shadow-sm">
                     {MATERIAL_ICON[material.material_type]}
                     <div className="max-w-md space-y-1.5">
-                      <h4 className="font-medium text-mm-heading">
+                      <h4 className="font-bold text-slate-900">
                         Tài liệu định dạng Office ({lowerUrl.split(".").pop()?.toUpperCase()})
                       </h4>
-                      <p className="text-sm text-mm-text-muted">
+                      <p className="text-sm text-slate-500">
                         Trình duyệt không hỗ trợ hiển thị trực tiếp tệp PowerPoint/Word. Vui lòng tải về để mở bằng Microsoft Office hoặc LibreOffice.
                       </p>
                     </div>
-                    <MmButton variant="primary" size="md" onClick={() => onDownload(material)}>
+                    <MmButton variant="brand" size="md" onClick={() => onDownload(material)}>
                       <Download className="h-4 w-4" />
                       <span>Tải về tệp gốc</span>
                     </MmButton>
                   </div>
                 ) : (
-                  <div className="flex flex-col items-center justify-center gap-3 py-14 text-center text-sm text-mm-text-muted">
+                  <div className="flex flex-col items-center justify-center gap-3 py-14 text-center text-sm text-slate-500">
                     <p>Định dạng tệp này không hỗ trợ xem trước trực tiếp.</p>
-                    <MmButton variant="primary" size="sm" onClick={() => onDownload(material)}>
+                    <MmButton variant="brand" size="sm" onClick={() => onDownload(material)}>
                       <Download className="h-4 w-4" />
                       <span>Tải về tệp gốc</span>
                     </MmButton>
@@ -420,18 +420,19 @@ export const MaterialViewerModal: React.FC<MaterialViewerModalProps> = ({
         </div>
 
         {/* Footer */}
-        <div className="flex items-center justify-between border-t border-mm-divider bg-mm-surface px-5 py-3">
-          <span className="text-xs text-mm-text-muted">
-            {isExternalUrl ? "Liên kết ngoài" : "Lưu trữ nội bộ ADLAS"}
-          </span>
-          <div className="flex items-center gap-2">
+        <div className="flex items-center justify-between border-t border-slate-100 bg-white px-6 py-3.5">
+          <div className="flex items-center gap-2 text-xs font-medium text-slate-500">
+            <span className="h-2 w-2 rounded-full bg-emerald-500" />
+            <span>{isExternalUrl ? "Liên kết ngoài" : "Lưu trữ nội bộ ADLAS"}</span>
+          </div>
+          <div className="flex items-center gap-2.5">
             {fileUrl && !isExternalUrl && (
-              <MmButton variant="secondary" size="sm" onClick={() => onDownload(material)}>
+              <MmButton variant="brand" size="sm" onClick={() => onDownload(material)}>
                 <Download className="h-4 w-4" />
                 <span>Tải về tệp gốc</span>
               </MmButton>
             )}
-            <MmButton variant="primary" size="sm" onClick={onClose}>
+            <MmButton variant="secondary" size="sm" onClick={onClose}>
               Đóng
             </MmButton>
           </div>
