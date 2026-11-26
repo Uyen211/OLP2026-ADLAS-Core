@@ -20,9 +20,16 @@ import {
 } from "lucide-react";
 import { learningService } from "../../../../services/learningService";
 import { ApiError } from "../../../../services/httpClient";
-import type { LearningMaterial, MaterialCheckpoint } from "../../../../types/learning";
+import type {
+  LearningMaterial,
+  MaterialCheckpoint,
+  MaterialStructuredContent,
+} from "../../../../types/learning";
 import { MmButton } from "../../components/MmButton";
 import { showToast } from "../../components/Toast";
+import { DocumentFilmstripTrack } from "./DocumentFilmstripTrack";
+import { DocumentSectionsStage } from "./DocumentSectionsStage";
+import { SlidePdfStage } from "./SlidePdfStage";
 import { VideoTimelineTrack, formatTimecode } from "./VideoTimelineTrack";
 
 export interface CheckpointEditorModalProps {
@@ -48,6 +55,11 @@ export const CheckpointEditorModal: React.FC<CheckpointEditorModalProps> = ({
   const [duration, setDuration] = useState(0);
   const [currentTime, setCurrentTime] = useState(0);
   const [isPlaying, setIsPlaying] = useState(false);
+
+  // Document / PDF / Slide studio state
+  const [structuredContent, setStructuredContent] = useState<MaterialStructuredContent | null>(null);
+  const [structuredLoading, setStructuredLoading] = useState(false);
+  const [currentPageIndex, setCurrentPageIndex] = useState(1);
 
   // Right-panel mode & selection
   const [panelMode, setPanelMode] = useState<"list" | "form">("list");
@@ -117,6 +129,8 @@ export const CheckpointEditorModal: React.FC<CheckpointEditorModalProps> = ({
     setCurrentTime(0);
     setDuration(0);
     setIsPlaying(false);
+    setCurrentPageIndex(1);
+    setStructuredContent(null);
     loadCheckpoints();
 
     let createdUrl: string | null = null;
@@ -134,6 +148,14 @@ export const CheckpointEditorModal: React.FC<CheckpointEditorModalProps> = ({
       }
     } else {
       setVideoUrl(null);
+      if (material.file_url && !material.file_url.startsWith("http")) {
+        setStructuredLoading(true);
+        learningService
+          .getMaterialStructuredContent(courseId, material.id)
+          .then((res) => setStructuredContent(res))
+          .catch(() => setStructuredContent(null))
+          .finally(() => setStructuredLoading(false));
+      }
     }
 
     return () => {
@@ -178,10 +200,44 @@ export const CheckpointEditorModal: React.FC<CheckpointEditorModalProps> = ({
     setPanelMode("form");
   };
 
+  const handleOpenAddAtSection = (targetSection: number) => {
+    resetForm(0);
+    setSectionIndex(targetSection);
+    setSelectedId(null);
+    setPanelMode("form");
+  };
+
   const handleSelectCheckpoint = (chk: MaterialCheckpoint) => {
     setSelectedId(chk.id);
     if (isVideo && chk.stop_time_seconds !== null && chk.stop_time_seconds !== undefined) {
       seekVideoTo(chk.stop_time_seconds, true);
+    } else if (!isVideo && chk.section_index) {
+      setCurrentPageIndex(chk.section_index);
+    }
+  };
+
+  const handleMoveSectionCheckpoint = async (checkpointId: string, newSectionIndex: number) => {
+    const previous = checkpoints;
+    setCheckpoints((prev) =>
+      prev.map((c) => (c.id === checkpointId ? { ...c, section_index: newSectionIndex } : c))
+    );
+    setSelectedId(checkpointId);
+    setCurrentPageIndex(newSectionIndex);
+    if (editingId === checkpointId) {
+      setSectionIndex(newSectionIndex);
+    }
+
+    try {
+      await learningService.updateCheckpoint(courseId, checkpointId, {
+        section_index: newSectionIndex,
+      });
+      showToast("success", `Đã chuyển câu hỏi sang Trang/Slide ${newSectionIndex}`);
+    } catch (err) {
+      setCheckpoints(previous);
+      showToast(
+        "error",
+        err instanceof ApiError ? err.message : "Không thể dời vị trí câu hỏi."
+      );
     }
   };
 
@@ -296,32 +352,21 @@ export const CheckpointEditorModal: React.FC<CheckpointEditorModalProps> = ({
       <div className="space-y-4">
         <div className="flex items-center justify-between border-b border-mm-border pb-3">
           <div className="flex items-center gap-2">
-            {isVideo && (
-              <button
-                type="button"
-                onClick={() => {
-                  resetForm(0);
-                  setPanelMode("list");
-                }}
-                className="inline-flex items-center gap-1 rounded-md border border-mm-border bg-mm-bg px-2.5 py-1 text-xs font-medium text-mm-heading hover:bg-mm-surface-alt"
-              >
-                <ArrowLeft className="h-3.5 w-3.5" />
-                <span>Danh sách</span>
-              </button>
-            )}
+            <button
+              type="button"
+              onClick={() => {
+                resetForm(0);
+                setPanelMode("list");
+              }}
+              className="inline-flex items-center gap-1 rounded-md border border-mm-border bg-mm-bg px-2.5 py-1 text-xs font-medium text-mm-heading hover:bg-mm-surface-alt"
+            >
+              <ArrowLeft className="h-3.5 w-3.5" />
+              <span>Danh sách</span>
+            </button>
             <h4 className="text-sm font-bold text-mm-heading">
               {editingId ? "Cập nhật câu hỏi" : "Thêm câu hỏi mới"}
             </h4>
           </div>
-          {!isVideo && editingId && (
-            <button
-              type="button"
-              onClick={() => resetForm(0)}
-              className="text-xs font-medium text-mm-brand hover:underline"
-            >
-              Hủy sửa (Tạo mới)
-            </button>
-          )}
         </div>
 
         <div className="grid grid-cols-2 gap-3">
@@ -470,19 +515,17 @@ export const CheckpointEditorModal: React.FC<CheckpointEditorModalProps> = ({
       </div>
 
       <div className="flex items-center justify-end gap-2 border-t border-mm-border pt-3">
-        {isVideo && (
-          <MmButton
-            type="button"
-            variant="secondary"
-            size="sm"
-            onClick={() => {
-              resetForm(0);
-              setPanelMode("list");
-            }}
-          >
-            Hủy
-          </MmButton>
-        )}
+        <MmButton
+          type="button"
+          variant="secondary"
+          size="sm"
+          onClick={() => {
+            resetForm(0);
+            setPanelMode("list");
+          }}
+        >
+          Hủy
+        </MmButton>
         <MmButton type="submit" variant="primary" size="sm" disabled={saving}>
           {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
           <span>{editingId ? "Lưu thay đổi" : "Lưu câu hỏi"}</span>
@@ -498,16 +541,26 @@ export const CheckpointEditorModal: React.FC<CheckpointEditorModalProps> = ({
           <h4 className="text-sm font-bold text-mm-heading">
             Câu hỏi trong {isVideo ? "Video" : "Tài liệu"} ({sortedCheckpoints.length})
           </h4>
-          {isVideo && (
-            <p className="text-[11px] text-mm-text-muted">
-              Click vào một câu hỏi để nhảy tới đúng thời điểm dừng
-            </p>
-          )}
+          <p className="text-[11px] text-mm-text-muted">
+            {isVideo
+              ? "Click vào một câu hỏi để nhảy tới đúng thời điểm dừng"
+              : "Click vào câu hỏi để nhảy tới đúng Trang / Slide / Mục"}
+          </p>
         </div>
-        {isVideo && (
+        {isVideo ? (
           <MmButton type="button" size="sm" variant="primary" onClick={handleOpenAddAtCurrentTime}>
             <Plus className="h-3.5 w-3.5" />
             <span>Tại {formatTimecode(currentTime)}</span>
+          </MmButton>
+        ) : (
+          <MmButton
+            type="button"
+            size="sm"
+            variant="primary"
+            onClick={() => handleOpenAddAtSection(currentPageIndex)}
+          >
+            <Plus className="h-3.5 w-3.5" />
+            <span>Tại Mục/Trang {currentPageIndex}</span>
           </MmButton>
         )}
       </div>
@@ -744,13 +797,88 @@ export const CheckpointEditorModal: React.FC<CheckpointEditorModalProps> = ({
             </div>
           </div>
         ) : (
-          /* Non-video (PDF / Document / Slide): Crisp 2-Column Layout */
-          <div className="grid flex-1 grid-cols-1 gap-6 overflow-y-auto bg-mm-bg p-6 lg:grid-cols-12">
-            <div className="rounded-xl border border-mm-border bg-mm-surface p-5 lg:col-span-6">
-              {renderCheckpointsList()}
+          /* Non-video (PDF / Slide / Document): Unified Interactive Studio */
+          <div className="grid flex-1 grid-cols-1 overflow-hidden lg:grid-cols-12">
+            {/* Left 7 Cols: PDF/Slide Filmstrip Stage or Notion Section Stage */}
+            <div className="flex flex-col justify-between gap-3 overflow-y-auto bg-mm-bg p-5 lg:col-span-7">
+              {structuredLoading ? (
+                <div className="flex flex-1 items-center justify-center text-sm text-mm-text-muted">
+                  <Loader2 className="mr-2 h-5 w-5 animate-spin text-mm-brand" />
+                  Đang phân tích cấu trúc trang / slide tài liệu...
+                </div>
+              ) : structuredContent &&
+                (structuredContent.content_kind === "PDF_PAGES" ||
+                  structuredContent.content_kind === "SLIDE_DECK") ? (
+                <>
+                  <SlidePdfStage
+                    courseId={courseId}
+                    materialId={material.id}
+                    contentKind={structuredContent.content_kind}
+                    items={structuredContent.items}
+                    currentIndex={currentPageIndex}
+                    onChangeIndex={setCurrentPageIndex}
+                  />
+
+                  <div className="flex items-center justify-between rounded-xl border border-slate-700 bg-slate-900 px-4 py-2.5 text-white">
+                    <span className="text-xs text-slate-300">
+                      Đang xem{" "}
+                      <strong className="text-amber-400">
+                        {structuredContent.content_kind === "PDF_PAGES" ? "Trang" : "Slide"}{" "}
+                        {currentPageIndex}
+                      </strong>{" "}
+                      / {structuredContent.total_items}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => handleOpenAddAtSection(currentPageIndex)}
+                      className="inline-flex items-center gap-1.5 rounded-lg bg-amber-500 px-3.5 py-2 text-xs font-bold text-slate-950 shadow hover:bg-amber-400"
+                    >
+                      <Plus className="h-4 w-4" />
+                      <span>
+                        Thêm câu hỏi vào{" "}
+                        {structuredContent.content_kind === "PDF_PAGES" ? "Trang" : "Slide"}{" "}
+                        {currentPageIndex}
+                      </span>
+                    </button>
+                  </div>
+
+                  <DocumentFilmstripTrack
+                    items={structuredContent.items}
+                    currentIndex={currentPageIndex}
+                    checkpoints={checkpoints}
+                    selectedCheckpointId={selectedId}
+                    editable
+                    onSelectIndex={setCurrentPageIndex}
+                    onSelectCheckpoint={handleSelectCheckpoint}
+                    onMoveCheckpoint={handleMoveSectionCheckpoint}
+                  />
+                </>
+              ) : structuredContent && structuredContent.content_kind === "DOC_SECTIONS" ? (
+                <DocumentSectionsStage
+                  items={structuredContent.items}
+                  checkpoints={sortedCheckpoints}
+                  editable
+                  selectedCheckpointId={selectedId}
+                  onAddAtSection={handleOpenAddAtSection}
+                  onSelectCheckpoint={handleSelectCheckpoint}
+                  onEditCheckpoint={handleEdit}
+                  onDeleteCheckpoint={handleDelete}
+                />
+              ) : (
+                <div className="flex flex-1 flex-col items-center justify-center rounded-xl border-2 border-dashed border-mm-border bg-mm-surface p-8 text-center text-xs text-mm-text-muted">
+                  <p className="font-medium text-mm-heading">
+                    Học liệu chưa có tệp nội dung xem trước (hoặc là liên kết ngoài).
+                  </p>
+                  <p className="mt-1">
+                    Bạn vẫn có thể thêm câu hỏi kiểm tra theo số Mục/Trang ở bảng bên phải.
+                  </p>
+                </div>
+              )}
             </div>
-            <div className="rounded-xl border border-mm-border bg-mm-surface p-5 lg:col-span-6">
-              {renderForm()}
+
+            {/* Right 5 Cols: High-contrast Question List / Editor Form */}
+            <div className="flex flex-col overflow-y-auto border-l border-mm-border bg-mm-surface p-5 lg:col-span-5">
+              {panelMode === "form" ? renderForm() : renderCheckpointsList()}
             </div>
           </div>
         )}
