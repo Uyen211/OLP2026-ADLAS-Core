@@ -249,10 +249,12 @@ export async function httpRequest<T>(
   return (await response.text()) as unknown as T;
 }
 
-export async function httpDownloadBlob(path: string, filename: string): Promise<void> {
+export async function httpFetchBlob(path: string): Promise<Blob> {
   const url = path.startsWith("http")
     ? path
-    : `${API_BASE_URL}${path.startsWith("/") ? path : `/${path}`}`;
+    : path.startsWith("/api/")
+      ? path
+      : `${API_BASE_URL}${path.startsWith("/") ? path : `/${path}`}`;
 
   const headers: Record<string, string> = {};
   const token = sessionBridge?.getAccessToken();
@@ -264,8 +266,16 @@ export async function httpDownloadBlob(path: string, filename: string): Promise<
   if (!response.ok) {
     throw await parseErrorResponse(response);
   }
+  return response.blob();
+}
 
-  const blob = await response.blob();
+export async function httpFetchBlobUrl(path: string): Promise<string> {
+  const blob = await httpFetchBlob(path);
+  return URL.createObjectURL(blob);
+}
+
+export async function httpDownloadBlob(path: string, filename: string): Promise<void> {
+  const blob = await httpFetchBlob(path);
   const objectUrl = URL.createObjectURL(blob);
   const anchor = document.createElement("a");
   anchor.href = objectUrl;

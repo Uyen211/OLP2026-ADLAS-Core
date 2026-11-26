@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: MIT
  */
 
-import { httpDownloadBlob, httpRequest } from "./httpClient";
+import { httpDownloadBlob, httpFetchBlobUrl, httpRequest } from "./httpClient";
 import type {
   CellGradeDTO,
   ClassGradebookOverviewResponse,
@@ -228,5 +228,9 @@ export const gradebookService = {
       method: "POST",
       formData,
     });
+  },
+
+  fetchVoiceFeedbackObjectUrl(voiceFeedbackUrl: string): Promise<string> {
+    return httpFetchBlobUrl(voiceFeedbackUrl);
   },
 };

@@ -4,6 +4,7 @@
  */
 
 import React, { useCallback, useEffect, useState } from "react";
+import { Link } from "react-router-dom";
 import {
   AlertTriangle,
   Bot,
@@ -11,6 +12,7 @@ import {
   Clock,
   FileText,
   GitBranch,
+  GraduationCap,
   RefreshCw,
   ShieldAlert,
   Sparkles,
@@ -234,7 +236,14 @@ export const InstructorReviewPanel: React.FC<InstructorReviewPanelProps> = ({
                   </p>
                 </div>
 
-                <div className="flex flex-wrap gap-2 text-xs">
+                <div className="flex flex-wrap items-center gap-2 text-xs">
+                  <Link
+                    to={`/courses/${reviewDetail.course_id}/assignments/${reviewDetail.assignment_id}/speedgrader?submissionId=${reviewDetail.submission_id}`}
+                    className="inline-flex items-center gap-1.5 rounded-full bg-mm-blue-primary px-3 py-1 font-semibold text-white hover:opacity-95 transition-opacity"
+                  >
+                    <GraduationCap className="h-3.5 w-3.5" />
+                    Mở SpeedGrader 3 Cột
+                  </Link>
                   <span className="rounded-full border border-[#e5e7eb] bg-[#f9fafb] px-3 py-1 font-medium text-mm-dark">
                     Tự thực hiện: {reviewDetail.self_contribution_pct}%
                   </span>

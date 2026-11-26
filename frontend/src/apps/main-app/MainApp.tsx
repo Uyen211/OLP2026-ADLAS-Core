@@ -35,6 +35,7 @@ import { ExamManagementPage } from "./pages/examination/ExamManagementPage";
 import { ExamResultPage } from "./pages/examination/ExamResultPage";
 import { ExamTakingPage } from "./pages/examination/ExamTakingPage";
 import { GradebookPage } from "./pages/gradebook/GradebookPage";
+import { SpeedGraderPage } from "./pages/speedgrader/SpeedGraderPage";
 
 const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const accessToken = useAuthStore((s) => s.accessToken);
@@ -122,6 +123,14 @@ export const MainApp: React.FC = () => {
           element={
             <ProtectedRoute>
               <GradebookPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/courses/:courseId/assignments/:assignmentId/speedgrader"
+          element={
+            <ProtectedRoute>
+              <SpeedGraderPage />
             </ProtectedRoute>
           }
         />
