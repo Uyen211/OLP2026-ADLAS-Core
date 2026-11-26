@@ -8,6 +8,7 @@ from app.modules.assessment.router import router as assessment_router
 from app.modules.course.router import router as course_router
 from app.modules.examination.router import router as examination_router
 from app.modules.identity.router import router as identity_router
+from app.modules.learning.router import router as learning_router
 from app.modules.system.gateway_router import router as gateway_router
 from app.modules.system.router import router as system_router
 from app.modules.system.storage_router import router as storage_router
@@ -34,6 +35,7 @@ app.add_middleware(
 # Include Bounded Context Routers
 app.include_router(identity_router)
 app.include_router(course_router)
+app.include_router(learning_router)
 app.include_router(assessment_router)
 app.include_router(examination_router)
 app.include_router(system_router)
