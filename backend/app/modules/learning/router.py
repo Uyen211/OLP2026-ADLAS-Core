@@ -3,6 +3,7 @@
 
 """REST API router for Learning Modules, Materials, and File Uploads."""
 
+import mimetypes
 import os
 from typing import List
 import uuid
@@ -36,6 +37,28 @@ router = APIRouter(
 def _is_admin(current_user: CurrentUser) -> bool:
     """Resolve system admin privileges safely from User.system_role."""
     return (getattr(current_user.user, "system_role", "") or "").upper() == "ADMIN"
+
+
+_MEDIA_TYPE_MAP = {
+    ".pdf": "application/pdf",
+    ".mp4": "video/mp4",
+    ".webm": "video/webm",
+    ".md": "text/markdown; charset=utf-8",
+    ".txt": "text/plain; charset=utf-8",
+    ".pptx": "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+    ".ppt": "application/vnd.ms-powerpoint",
+    ".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    ".doc": "application/msword",
+}
+
+
+def _resolve_media_type(file_path: str) -> str:
+    """Resolve MIME media_type for inline material streaming."""
+    ext = os.path.splitext(file_path)[1].lower()
+    if ext in _MEDIA_TYPE_MAP:
+        return _MEDIA_TYPE_MAP[ext]
+    guessed, _ = mimetypes.guess_type(file_path)
+    return guessed or "application/octet-stream"
 
 
 # -----------------------------------------------------------------------------
@@ -238,6 +261,30 @@ async def download_material_file(
     return FileResponse(
         path=file_path,
         filename=os.path.basename(file_path),
+    )
+
+
+@router.get("/materials/{material_id}/preview")
+async def preview_material_file(
+    course_id: uuid.UUID,
+    material_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: CurrentUser = Depends(get_current_user),
+):
+    """Stream physical file inline for browser preview (enforces lock guards for students)."""
+    service = LearningMaterialService(db)
+    file_path = await service.get_material_file_path(
+        course_id=course_id,
+        material_id=material_id,
+        user_id=current_user.user.id,
+        is_admin=_is_admin(current_user),
+    )
+    filename = os.path.basename(file_path)
+    media_type = _resolve_media_type(file_path)
+    return FileResponse(
+        path=file_path,
+        media_type=media_type,
+        headers={"Content-Disposition": f'inline; filename="{filename}"'},
     )
 
 

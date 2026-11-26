@@ -345,3 +345,25 @@ def test_router_is_admin_resolves_from_system_role():
     assert _is_admin(CurrentUser(user=admin_user, token="tok")) is True
     assert _is_admin(CurrentUser(user=teacher_user, token="tok")) is False
     assert _is_admin(CurrentUser(user=none_role_user, token="tok")) is False
+
+
+def test_resolve_local_path_handles_relative_and_legacy_paths(monkeypatch):
+    """Relative 'materials/...' and legacy OS paths resolve consistently to active base dir."""
+    import os
+    monkeypatch.setenv("UPLOAD_DIR", "/tmp/adlas_uploads")
+
+    assert LearningMaterialService._resolve_local_path("materials/guide.pdf") == os.path.join("/tmp/adlas_uploads", "materials/guide.pdf")
+    assert LearningMaterialService._resolve_local_path(
+        "C:\\Users\\DELL\\.adlas\\uploads\\materials\\guide.pdf"
+    ) == os.path.join("/tmp/adlas_uploads", "materials/guide.pdf")
+    assert LearningMaterialService._resolve_local_path("https://youtube.com/watch?v=123") == "https://youtube.com/watch?v=123"
+
+
+def test_router_resolve_media_type():
+    """Verify inline preview MIME media_type resolution for supported learning formats."""
+    from app.modules.learning.router import _resolve_media_type
+
+    assert _resolve_media_type("lecture.pdf") == "application/pdf"
+    assert _resolve_media_type("demo.mp4") == "video/mp4"
+    assert _resolve_media_type("handbook.md") == "text/markdown; charset=utf-8"
+    assert "presentationml" in _resolve_media_type("slides.pptx")
