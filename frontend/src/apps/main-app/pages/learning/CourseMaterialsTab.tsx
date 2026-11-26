@@ -41,6 +41,17 @@ const MATERIAL_ICON: Record<MaterialType, React.ReactNode> = {
   DOCUMENT: <FileText className="h-4 w-4 text-emerald-500" />,
 };
 
+const formatDateTime = (isoStr: string) => {
+  try {
+    return new Date(isoStr).toLocaleString("vi-VN", {
+      dateStyle: "short",
+      timeStyle: "short",
+    });
+  } catch {
+    return isoStr;
+  }
+};
+
 export interface CourseMaterialsTabProps {
   courseId: string;
   canEdit: boolean;
@@ -331,6 +342,13 @@ export const CourseMaterialsTab: React.FC<CourseMaterialsTabProps> = ({
                           <span className="font-medium text-mm-text-secondary">
                             {mod.prerequisite_title}
                           </span>
+                        </p>
+                      )}
+
+                      {mod.unlock_at && (
+                        <p className="mt-0.5 flex items-center gap-1 text-xs text-blue-600">
+                          <Clock className="h-3 w-3" />
+                          <span>Lịch mở khóa: {formatDateTime(mod.unlock_at)}</span>
                         </p>
                       )}
                     </div>

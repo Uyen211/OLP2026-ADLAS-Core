@@ -90,6 +90,19 @@ export const MaterialFormModal: React.FC<MaterialFormModalProps> = ({
     setLoading(true);
     setBannerError(null);
 
+    // Client-side BR-STORAGE-02 file size pre-validation
+    if (selectedFile) {
+      const isVideo = materialType === "VIDEO" || selectedFile.type.startsWith("video/");
+      const maxBytes = isVideo ? 500 * 1024 * 1024 : 50 * 1024 * 1024;
+      const maxMbText = isVideo ? "500MB" : "50MB";
+      if (selectedFile.size > maxBytes) {
+        const actualMb = (selectedFile.size / (1024 * 1024)).toFixed(1);
+        setBannerError(`Kích thước tệp (${actualMb} MB) vượt quá giới hạn ${maxMbText} quy định tại BR-STORAGE-02.`);
+        setLoading(false);
+        return;
+      }
+    }
+
     try {
       let finalFileUrl = fileUrl.trim();
 
@@ -186,7 +199,7 @@ export const MaterialFormModal: React.FC<MaterialFormModalProps> = ({
           <FormField
             label="Chuẩn đầu ra gắn kết (LO)"
             htmlFor="mat-lo"
-            helperText="Gắn với Chuẩn đầu ra để theo dõi tiến độ (BR-LO-01)."
+            helper="Gắn với Chuẩn đầu ra để theo dõi tiến độ (BR-LO-01)."
           >
             <select
               id="mat-lo"
@@ -206,7 +219,7 @@ export const MaterialFormModal: React.FC<MaterialFormModalProps> = ({
 
         <FormField
           label="Tệp đính kèm học liệu (Upload file)"
-          helperText="Slide/PDF tối đa 50MB; Video tối đa 500MB (Quy tắc BR-STORAGE-02)."
+          helper="Slide/PDF tối đa 50MB; Video tối đa 500MB (Quy tắc BR-STORAGE-02)."
         >
           <FileDropzone
             accept=".pdf,.pptx,.ppt,.mp4,.webm,.docx,.doc,.txt,.md"
@@ -225,7 +238,7 @@ export const MaterialFormModal: React.FC<MaterialFormModalProps> = ({
           <FormField
             label="Hoặc Đường dẫn Video trực tuyến (URL)"
             htmlFor="mat-url"
-            helperText="Hỗ trợ link video MP4/HLS/YouTube trực tiếp"
+            helper="Hỗ trợ link video MP4/HLS/YouTube trực tiếp"
           >
             <input
               id="mat-url"

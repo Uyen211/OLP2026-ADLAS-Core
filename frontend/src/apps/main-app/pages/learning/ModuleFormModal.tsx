@@ -138,7 +138,7 @@ export const ModuleFormModal: React.FC<ModuleFormModalProps> = ({
         <FormField
           label="Bài học tiên quyết (Bắt buộc hoàn thành trước)"
           htmlFor="module-prereq"
-          helperText="Sinh viên chỉ có thể mở khóa bài học này sau khi đã hoàn thành bài tiên quyết."
+          helper="Sinh viên chỉ có thể mở khóa bài học này sau khi đã hoàn thành bài tiên quyết."
         >
           <select
             id="module-prereq"
@@ -158,7 +158,7 @@ export const ModuleFormModal: React.FC<ModuleFormModalProps> = ({
         <FormField
           label="Thời điểm tự động mở khóa (Tùy chọn)"
           htmlFor="module-unlock"
-          helperText="Để trống nếu muốn bài học mở ngay khi sinh viên thỏa mãn điều kiện tiên quyết."
+          helper="Để trống nếu muốn bài học mở ngay khi sinh viên thỏa mãn điều kiện tiên quyết."
         >
           <input
             id="module-unlock"
