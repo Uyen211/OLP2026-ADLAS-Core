@@ -369,8 +369,9 @@ export const CheckpointEditorModal: React.FC<CheckpointEditorModalProps> = ({
           </div>
         </div>
 
-        <div className="grid grid-cols-2 gap-3">
-          {isVideo ? (
+        {/* Grid position / timer settings: Only relevant for Video */}
+        {isVideo ? (
+          <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="mb-1.5 block text-xs font-semibold text-mm-heading">
                 Thời điểm dừng (giây)
@@ -393,37 +394,35 @@ export const CheckpointEditorModal: React.FC<CheckpointEditorModalProps> = ({
                 </span>
               </div>
             </div>
-          ) : (
+
             <div>
               <label className="mb-1.5 block text-xs font-semibold text-mm-heading">
-                Đề mục / Trang số
+                Thời gian trả lời (Video đếm ngược)
               </label>
-              <input
-                type="number"
-                min={1}
-                value={sectionIndex}
-                onChange={(e) => setSectionIndex(Math.max(1, Number(e.target.value)))}
-                className="w-full rounded-lg border border-mm-border bg-mm-surface px-3 py-2 text-sm font-semibold text-mm-heading focus:border-mm-brand focus:outline-none"
-              />
+              <select
+                value={timeLimitSeconds}
+                onChange={(e) => setTimeLimitSeconds(Number(e.target.value))}
+                className="w-full rounded-lg border border-mm-border bg-mm-surface px-3 py-2 text-sm text-mm-heading focus:border-mm-brand focus:outline-none"
+              >
+                <option value={10}>10 giây (Mặc định)</option>
+                <option value={15}>15 giây</option>
+                <option value={20}>20 giây</option>
+                <option value={30}>30 giây</option>
+              </select>
             </div>
-          )}
-
-          <div>
-            <label className="mb-1.5 block text-xs font-semibold text-mm-heading">
-              Thời gian trả lời
-            </label>
-            <select
-              value={timeLimitSeconds}
-              onChange={(e) => setTimeLimitSeconds(Number(e.target.value))}
-              className="w-full rounded-lg border border-mm-border bg-mm-surface px-3 py-2 text-sm text-mm-heading focus:border-mm-brand focus:outline-none"
-            >
-              <option value={10}>10 giây (Mặc định)</option>
-              <option value={15}>15 giây</option>
-              <option value={20}>20 giây</option>
-              <option value={30}>30 giây</option>
-            </select>
           </div>
-        </div>
+        ) : (
+          <div className="flex items-center justify-between rounded-lg border border-mm-border bg-mm-bg/60 px-3.5 py-2">
+            <span className="text-xs text-mm-text-muted">Vị trí chèn câu hỏi:</span>
+            <span className="inline-flex items-center gap-1.5 rounded-md bg-amber-500/15 px-2.5 py-1 font-mono text-xs font-bold text-amber-700 dark:text-amber-400">
+              {material?.material_type === "SLIDE"
+                ? `Slide ${sectionIndex}`
+                : material?.material_type === "PDF"
+                ? `Trang ${sectionIndex}`
+                : `Mục ${sectionIndex}`}
+            </span>
+          </div>
+        )}
 
         <div>
           <label className="mb-1.5 block text-xs font-semibold text-mm-heading">
