@@ -122,3 +122,57 @@ class AssessmentAccessDeniedException(ADLASException):
             detail=detail,
             status_code=status.HTTP_403_FORBIDDEN
         )
+
+
+class InvalidAssignmentScheduleException(ADLASException):
+    def __init__(self, detail: str = "Invalid schedule: require available_from <= due_date <= until_date."):
+        super().__init__(
+            code="E-ASN-01",
+            detail=detail,
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY
+        )
+
+
+class AssignmentNotOpenException(ADLASException):
+    def __init__(self):
+        super().__init__(
+            code="E-ASN-02",
+            detail="This assignment is not open for submission yet (available_from has not been reached).",
+            status_code=status.HTTP_403_FORBIDDEN
+        )
+
+
+class MaxAttemptsExceededException(ADLASException):
+    def __init__(self, max_attempts: int):
+        super().__init__(
+            code="E-ASN-03",
+            detail=f"Maximum number of submission attempts ({max_attempts}) has been reached.",
+            status_code=status.HTTP_403_FORBIDDEN
+        )
+
+
+class InvalidRubricTotalPointsException(ADLASException):
+    def __init__(self, total: str, expected: str = "10.0"):
+        super().__init__(
+            code="E-RUB-01",
+            detail=f"Rubric criteria points must total exactly {expected} (current total: {total}).",
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY
+        )
+
+
+class RubricFrozenException(ADLASException):
+    def __init__(self, submission_count: int = 0):
+        super().__init__(
+            code="E-RUB-02",
+            detail=f"Rubric is frozen because it is already used for grading ({submission_count} submission(s)).",
+            status_code=status.HTTP_409_CONFLICT
+        )
+
+
+class IntegrityPledgeNotSignedException(ADLASException):
+    def __init__(self):
+        super().__init__(
+            code="E-PLG-01",
+            detail="You must confirm the academic integrity pledge before continuing.",
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY
+        )

@@ -46,7 +46,18 @@ class Assignment(Base):
     is_viva_required = Column(Boolean, nullable=False, default=True)
     viva_question_count = Column(Integer, nullable=False, default=3)
     ai_policy_level = Column(String(20), nullable=False, default="YELLOW")
+    is_published = Column(Boolean, nullable=False, default=False)
+    available_from = Column(DateTime(timezone=True), nullable=True)
+    max_points = Column(Numeric(4, 1), nullable=False, default=10.0)
+    max_attempts = Column(Integer, nullable=True)
+    created_by = Column(UUID(as_uuid=True), ForeignKey("identity.users.id", ondelete="SET NULL"), nullable=True)
     created_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
+    updated_at = Column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
+    )
 
     submissions = relationship("AssignmentSubmission", back_populates="assignment", cascade="all, delete-orphan")
     rubric = relationship("Rubric", back_populates="assignment", uselist=False, cascade="all, delete-orphan")
@@ -136,3 +147,24 @@ class VivaTranscript(Base):
     status = Column(String(30), nullable=False, default="COMPLETED")  # READY, IN_PROGRESS, COMPLETED, TIMEOUT
 
     submission = relationship("AssignmentSubmission", back_populates="viva_transcript")
+
+
+class IntegrityPledge(Base):
+    """Append-only electronic academic integrity pledge in assessment.integrity_pledges."""
+
+    __tablename__ = "integrity_pledges"
+    __table_args__ = (
+        CheckConstraint("self_contribution_pct >= 0 AND self_contribution_pct <= 100", name="integrity_pledges_self_contribution_pct_check"),
+        {"schema": "assessment"},
+    )
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    assignment_id = Column(UUID(as_uuid=True), ForeignKey("assessment.assignments.id", ondelete="CASCADE"), nullable=False)
+    user_id = Column(UUID(as_uuid=True), ForeignKey("identity.users.id", ondelete="CASCADE"), nullable=False)
+    pledge_version = Column(String(30), nullable=False, default="v1.0")
+    ai_policy_level = Column(String(20), nullable=False)
+    self_contribution_pct = Column(Integer, nullable=False)
+    ai_disclosure_snapshot = Column(JSONB, nullable=False, default=dict)
+    client_ip = Column(String(45), nullable=True)
+    user_agent = Column(String(255), nullable=True)
+    signed_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
