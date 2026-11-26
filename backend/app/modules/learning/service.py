@@ -12,6 +12,8 @@ from app.modules.course.public_api import CoursePublicService
 from app.modules.learning.exceptions import (
     LearningMaterialNotFoundException,
     LearningModuleNotFoundException,
+    ModuleCircularDependencyException,
+    ModuleLockedException,
 )
 from app.modules.learning.models import LearningMaterial, LearningModule
 from app.modules.learning.repository import LearningRepository
@@ -32,6 +34,61 @@ class LearningModuleService:
         self.db = db
         self.repo = repo or LearningRepository(db)
         self.course_service = CoursePublicService(db)
+
+    async def _assert_no_circular_dependency(
+        self,
+        course_id: uuid.UUID,
+        module_id: Optional[uuid.UUID],
+        prerequisite_id: Optional[uuid.UUID],
+    ) -> None:
+        """Prevent circular or self prerequisite dependency chains."""
+        if not prerequisite_id:
+            return
+
+        if module_id and prerequisite_id == module_id:
+            raise ModuleCircularDependencyException("Bài học không thể tự làm điều kiện tiên quyết cho chính nó.")
+
+        all_modules = await self.repo.list_modules(course_id, is_published_only=False)
+        prereq_graph: Dict[uuid.UUID, Optional[uuid.UUID]] = {
+            m.id: m.prerequisite_module_id for m in all_modules
+        }
+
+        if prerequisite_id not in prereq_graph:
+            raise LearningModuleNotFoundException("Bài học tiên quyết không tồn tại trong môn học này.")
+
+        if module_id:
+            prereq_graph[module_id] = prerequisite_id
+
+        visited = set()
+        curr = prerequisite_id
+        while curr:
+            if curr in visited or (module_id and curr == module_id):
+                raise ModuleCircularDependencyException("Phát hiện điều kiện tiên quyết vòng tròn giữa các bài học.")
+            visited.add(curr)
+            curr = prereq_graph.get(curr)
+
+    async def _resolve_student_lock(
+        self,
+        module: LearningModule,
+        user_id: uuid.UUID,
+        mod_map: Dict[uuid.UUID, str],
+    ) -> tuple[bool, Optional[str]]:
+        """Determine if a module is locked for a student and provide localized reason."""
+        now = datetime.now(timezone.utc)
+        if module.unlock_at and module.unlock_at > now:
+            unlock_str = module.unlock_at.strftime("%d/%m/%Y %H:%M")
+            return True, f"Bài học mở khóa vào lúc {unlock_str}."
+
+        if module.prerequisite_module_id:
+            is_completed = await self.repo.is_module_completed_by_user(
+                module.prerequisite_module_id,
+                user_id,
+            )
+            if not is_completed:
+                prereq_title = mod_map.get(module.prerequisite_module_id, "bài học trước")
+                return True, f"Cần hoàn thành '{prereq_title}' để mở khóa bài học này."
+
+        return False, None
 
     async def list_modules(
         self,
@@ -57,10 +114,18 @@ class LearningModuleService:
 
         responses: List[ModuleResponse] = []
         for mod in modules:
-            # Filter materials for students
+            is_locked = False
+            lock_reason = None
+            if is_student:
+                is_locked, lock_reason = await self._resolve_student_lock(mod, user_id, mod_map)
+
+            # Filter materials for students (hide contents if locked)
             materials = mod.materials or []
             if is_student:
-                materials = [mat for mat in materials if mat.is_published]
+                if is_locked:
+                    materials = []
+                else:
+                    materials = [mat for mat in materials if mat.is_published]
 
             mat_responses = [
                 MaterialResponse(
@@ -89,8 +154,8 @@ class LearningModuleService:
                     prerequisite_module_id=mod.prerequisite_module_id,
                     prerequisite_title=mod_map.get(mod.prerequisite_module_id) if mod.prerequisite_module_id else None,
                     is_published=mod.is_published,
-                    is_locked=False,
-                    lock_reason=None,
+                    is_locked=is_locked,
+                    lock_reason=lock_reason,
                     created_at=mod.created_at,
                     materials=mat_responses,
                 )
@@ -121,14 +186,24 @@ class LearningModuleService:
         if is_student and not mod.is_published:
             raise LearningModuleNotFoundException()
 
-        los = await self.course_service.get_learning_objectives(course_id)
-        lo_map: Dict[uuid.UUID, str] = {lo.id: lo.code for lo in los}
-
         prereq_title = None
         if mod.prerequisite_module_id:
             prereq = await self.repo.get_module(mod.prerequisite_module_id, include_materials=False)
             if prereq:
                 prereq_title = prereq.title
+
+        is_locked = False
+        lock_reason = None
+        if is_student:
+            mod_map = {mod.id: mod.title}
+            if mod.prerequisite_module_id and prereq_title:
+                mod_map[mod.prerequisite_module_id] = prereq_title
+            is_locked, lock_reason = await self._resolve_student_lock(mod, user_id, mod_map)
+            if is_locked:
+                raise ModuleLockedException(lock_reason or "Bài học đang tạm khóa.")
+
+        los = await self.course_service.get_learning_objectives(course_id)
+        lo_map: Dict[uuid.UUID, str] = {lo.id: lo.code for lo in los}
 
         materials = mod.materials or []
         if is_student:
@@ -160,8 +235,8 @@ class LearningModuleService:
             prerequisite_module_id=mod.prerequisite_module_id,
             prerequisite_title=prereq_title,
             is_published=mod.is_published,
-            is_locked=False,
-            lock_reason=None,
+            is_locked=is_locked,
+            lock_reason=lock_reason,
             created_at=mod.created_at,
             materials=mat_responses,
         )
@@ -180,6 +255,9 @@ class LearningModuleService:
             allowed_roles=[ContextualRole.INSTRUCTOR],
             is_admin=is_admin,
         )
+
+        if payload.prerequisite_module_id:
+            await self._assert_no_circular_dependency(course_id, None, payload.prerequisite_module_id)
 
         order_idx = payload.order_index
         if order_idx is None:
@@ -217,6 +295,10 @@ class LearningModuleService:
         mod = await self.repo.get_module(module_id)
         if not mod or mod.course_id != course_id:
             raise LearningModuleNotFoundException()
+
+        if payload.prerequisite_module_id is not None:
+            await self._assert_no_circular_dependency(course_id, mod.id, payload.prerequisite_module_id)
+            mod.prerequisite_module_id = payload.prerequisite_module_id
 
         if payload.title is not None:
             mod.title = payload.title.strip()
