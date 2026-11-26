@@ -18,12 +18,20 @@ import {
 import { learningService } from "../../../../services/learningService";
 import { ApiError } from "../../../../services/httpClient";
 import type { LOResponse } from "../../../../types/course";
-import type { LearningMaterial, MaterialCheckpoint, MaterialType } from "../../../../types/learning";
+import type {
+  LearningMaterial,
+  MaterialCheckpoint,
+  MaterialStructuredContent,
+  MaterialType,
+} from "../../../../types/learning";
 import { BloomBadge } from "../../components/BloomBadge";
 import { MmButton } from "../../components/MmButton";
 import { showToast } from "../../components/Toast";
 import { DocumentCheckpointsPanel } from "./DocumentCheckpointsPanel";
+import { DocumentFilmstripTrack } from "./DocumentFilmstripTrack";
+import { DocumentSectionsStage } from "./DocumentSectionsStage";
 import { InteractiveVideoPlayer } from "./InteractiveVideoPlayer";
+import { SlidePdfStage } from "./SlidePdfStage";
 
 export interface MaterialViewerModalProps {
   open: boolean;
@@ -73,6 +81,8 @@ export const MaterialViewerModal: React.FC<MaterialViewerModalProps> = ({
   const [textContent, setTextContent] = useState<string | null>(null);
   const [contentType, setContentType] = useState<string>("");
   const [checkpoints, setCheckpoints] = useState<MaterialCheckpoint[]>([]);
+  const [structuredContent, setStructuredContent] = useState<MaterialStructuredContent | null>(null);
+  const [currentPageIndex, setCurrentPageIndex] = useState(1);
   const [isCompleted, setIsCompleted] = useState(false);
   const [completing, setCompleting] = useState(false);
 
@@ -111,6 +121,8 @@ export const MaterialViewerModal: React.FC<MaterialViewerModalProps> = ({
 
     setIsCompleted(false);
     setCheckpoints([]);
+    setStructuredContent(null);
+    setCurrentPageIndex(1);
     learningService
       .listCheckpoints(courseId, material.id)
       .then((list) => setCheckpoints(list))
@@ -130,6 +142,10 @@ export const MaterialViewerModal: React.FC<MaterialViewerModalProps> = ({
 
     let cancelled = false;
     let createdUrl: string | null = null;
+    const isVideoMat =
+      material.material_type === "VIDEO" ||
+      material.file_url.toLowerCase().endsWith(".mp4") ||
+      material.file_url.toLowerCase().endsWith(".webm");
 
     const loadPreview = async () => {
       setLoading(true);
@@ -137,6 +153,18 @@ export const MaterialViewerModal: React.FC<MaterialViewerModalProps> = ({
       setObjectUrl(null);
       setTextContent(null);
       try {
+        if (!isVideoMat) {
+          const structured = await learningService.getMaterialStructuredContent(
+            courseId,
+            material.id
+          );
+          if (cancelled) return;
+          if (structured.content_kind !== "UNSUPPORTED" && structured.items.length > 0) {
+            setStructuredContent(structured);
+            return;
+          }
+        }
+
         const { blob, contentType: mime } = await learningService.fetchMaterialPreviewBlob(
           courseId,
           material.id
@@ -195,6 +223,12 @@ export const MaterialViewerModal: React.FC<MaterialViewerModalProps> = ({
     lowerUrl.endsWith(".ppt") ||
     lowerUrl.endsWith(".docx") ||
     lowerUrl.endsWith(".doc");
+
+  const unpassedBlockingSections = checkpoints
+    .filter((c) => c.is_blocking && !c.is_passed)
+    .map((c) => c.section_index ?? 1);
+  const lockedFromIndex =
+    unpassedBlockingSections.length > 0 ? Math.min(...unpassedBlockingSections) : undefined;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm">
@@ -301,6 +335,35 @@ export const MaterialViewerModal: React.FC<MaterialViewerModalProps> = ({
                       </a>
                     </div>
                   )
+                ) : structuredContent &&
+                  (structuredContent.content_kind === "PDF_PAGES" ||
+                    structuredContent.content_kind === "SLIDE_DECK") ? (
+                  <div className="space-y-3">
+                    <SlidePdfStage
+                      courseId={courseId}
+                      materialId={material.id}
+                      contentKind={structuredContent.content_kind}
+                      items={structuredContent.items}
+                      currentIndex={currentPageIndex}
+                      lockedFromIndex={lockedFromIndex}
+                      onChangeIndex={setCurrentPageIndex}
+                    />
+                    <DocumentFilmstripTrack
+                      items={structuredContent.items}
+                      currentIndex={currentPageIndex}
+                      checkpoints={checkpoints}
+                      lockedFromIndex={lockedFromIndex}
+                      onSelectIndex={setCurrentPageIndex}
+                    />
+                  </div>
+                ) : structuredContent && structuredContent.content_kind === "DOC_SECTIONS" ? (
+                  <div className="max-h-[65vh] overflow-y-auto pr-1">
+                    <DocumentSectionsStage
+                      items={structuredContent.items}
+                      checkpoints={checkpoints}
+                      lockedFromIndex={lockedFromIndex}
+                    />
+                  </div>
                 ) : textContent !== null ? (
                   <div className="max-h-[65vh] overflow-y-auto rounded-mm border border-mm-divider bg-mm-surface p-6">
                     <pre className="whitespace-pre-wrap font-sans text-sm leading-relaxed text-mm-text">
