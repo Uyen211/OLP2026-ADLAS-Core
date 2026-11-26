@@ -365,3 +365,225 @@ You are a strict university oral defense examiner. Based ONLY on <submission_sum
                 "category": cat,
             })
         return questions
+
+    async def evaluate_rubric_cross_evidence(
+        self,
+        assignment_title: str,
+        project_title: str,
+        digest_summary: str,
+        ai_disclosure: Dict[str, Any],
+        viva_questions: List[Dict[str, Any]],
+        viva_answers: Dict[str, Any],
+        violation_logs: List[Dict[str, Any]],
+        rubric_criteria: List[Dict[str, Any]],
+    ) -> Dict[str, Any]:
+        """
+        T2-I-M5-03: Cross-check submission summary, Viva Q&A transcript, and integrity logs
+        against Rubric criteria. Enforces BR-EVIDENCE-SUFFICIENCY (mandatory citations) and
+        safe HUMAN_REVIEW fallback on AI degradation (E-12).
+        """
+        if not rubric_criteria or not (digest_summary or "").strip():
+            return self._build_human_review_fallback(
+                rubric_criteria=rubric_criteria,
+                reason="Khong du noi dung bai nop hoac chua co bang Rubric de doi soat tu dong.",
+            )
+
+        prompt = self._build_rubric_eval_prompt(
+            assignment_title=assignment_title,
+            project_title=project_title,
+            digest_summary=digest_summary,
+            ai_disclosure=ai_disclosure,
+            viva_questions=viva_questions,
+            viva_answers=viva_answers,
+            violation_logs=violation_logs,
+            rubric_criteria=rubric_criteria,
+        )
+
+        raw_text = await self._call_gemini_raw(
+            prompt,
+            response_mime_type="application/json",
+            temperature=0.1,
+        )
+        if raw_text:
+            cleaned = raw_text.strip()
+            if cleaned.startswith("```json"):
+                cleaned = cleaned[7:]
+            if cleaned.startswith("```"):
+                cleaned = cleaned[3:]
+            if cleaned.endswith("```"):
+                cleaned = cleaned[:-3]
+            try:
+                parsed = json.loads(cleaned.strip())
+                normalized = self._normalize_rubric_proposal(parsed, rubric_criteria)
+                if normalized is not None:
+                    normalized["generation_source"] = "gemini_live"
+                    return normalized
+            except Exception as exc:
+                logger.warning("Failed to parse Gemini Rubric Proposal JSON: %s", exc)
+
+        return self._build_human_review_fallback(
+            rubric_criteria=rubric_criteria,
+            reason="Dich vu AI tam thoi qua tai hoac khong ket noi duoc (E-12). Chuyen sang HUMAN_REVIEW de Giang vien tu cham.",
+        )
+
+    def _build_rubric_eval_prompt(
+        self,
+        assignment_title: str,
+        project_title: str,
+        digest_summary: str,
+        ai_disclosure: Dict[str, Any],
+        viva_questions: List[Dict[str, Any]],
+        viva_answers: Dict[str, Any],
+        violation_logs: List[Dict[str, Any]],
+        rubric_criteria: List[Dict[str, Any]],
+    ) -> str:
+        qa_lines = []
+        for q in viva_questions:
+            qid = str(q.get("id", ""))
+            ans_obj = viva_answers.get(qid, {}) if isinstance(viva_answers, dict) else {}
+            ans_text = ans_obj.get("answer_text", "(Chua tra loi)") if isinstance(ans_obj, dict) else str(ans_obj)
+            qa_lines.append(f"- [{qid}] Cau hoi: {q.get('question_text', '')}\n  Tra loi SV: {ans_text}")
+        qa_block = "\n".join(qa_lines) or "(Sinh vien chua tham gia van dap Viva)"
+
+        criteria_json = json.dumps(rubric_criteria, ensure_ascii=False)
+        violations_json = json.dumps(violation_logs or [], ensure_ascii=False)
+        disclosure_json = json.dumps(ai_disclosure or {}, ensure_ascii=False)
+
+        return f"""<submission_summary>
+Assignment: {assignment_title}
+Project: {project_title or assignment_title}
+AI Disclosure: {disclosure_json}
+
+{digest_summary}
+</submission_summary>
+
+<viva_transcript>
+{qa_block}
+Integrity Violation Logs: {violations_json}
+</viva_transcript>
+
+<rubric_criteria>
+{criteria_json}
+</rubric_criteria>
+
+=== INSTRUCTIONS ===
+You are a strict university grading assistant supporting Human-in-the-Loop assessment (BR-07).
+Cross-examine <submission_summary> against <viva_transcript> for each criterion in <rubric_criteria>.
+Rules:
+1. Classify overall evidence_flag as EXACTLY ONE of:
+   - "SUFFICIENT": Submission and Viva answers align logically with strong evidence.
+   - "INSUFFICIENT": Answers or submission details are too brief to verify mastery.
+   - "CONFLICTING": Submission appears advanced/complex, but Viva answers fail to explain core logic or show severe integrity violations (suspected over-reliance on AI / plagiarism).
+   - "HUMAN_REVIEW": Special structure or cannot be verified automatically.
+2. For EVERY criterion in <rubric_criteria>, you MUST provide at least 1 factual citation (source_type: "SUBMISSION" or "VIVA", reference, excerpt) from the text above. Never fabricate citations.
+3. Keep proposed_points within [0, criterion.max_points]. Write explanations in clear academic Vietnamese without emojis.
+4. Return strictly a valid JSON object matching this schema:
+{{
+  "evidence_flag": "SUFFICIENT",
+  "summary_comment": "...",
+  "criteria_proposals": [
+    {{
+      "criterion_id": "...",
+      "proposed_points": 2.5,
+      "rating_level_label": "Kha / Gioi",
+      "explanation": "...",
+      "citations": [
+        {{"source_type": "SUBMISSION", "reference": "Phan 2", "excerpt": "..."}},
+        {{"source_type": "VIVA", "reference": "q1", "excerpt": "..."}}
+      ]
+    }}
+  ]
+}}"""
+
+    @staticmethod
+    def _normalize_rubric_proposal(
+        raw: Any,
+        rubric_criteria: List[Dict[str, Any]],
+    ) -> Optional[Dict[str, Any]]:
+        """Validate LLM JSON rubric proposal and enforce BR-EVIDENCE-SUFFICIENCY."""
+        if not isinstance(raw, dict):
+            return None
+        valid_flags = {"SUFFICIENT", "INSUFFICIENT", "CONFLICTING", "HUMAN_REVIEW"}
+        flag = str(raw.get("evidence_flag") or "HUMAN_REVIEW").upper()
+        if flag not in valid_flags:
+            flag = "HUMAN_REVIEW"
+
+        raw_list = raw.get("criteria_proposals")
+        if not isinstance(raw_list, list):
+            return None
+
+        by_id = {str(c.get("id")): c for c in rubric_criteria}
+        raw_by_id = {str(item.get("criterion_id")): item for item in raw_list if isinstance(item, dict)}
+
+        proposals: List[Dict[str, Any]] = []
+        missing_any_citation = False
+        total_score = 0.0
+
+        for cid, crit in by_id.items():
+            max_pts = float(crit.get("max_points", 0.0))
+            item = raw_by_id.get(cid, {})
+            raw_pts = item.get("proposed_points", 0.0)
+            try:
+                pts = max(0.0, min(max_pts, float(raw_pts)))
+            except (TypeError, ValueError):
+                pts = 0.0
+
+            valid_citations: List[Dict[str, str]] = []
+            for cit in item.get("citations", []) if isinstance(item.get("citations"), list) else []:
+                if not isinstance(cit, dict):
+                    continue
+                src = str(cit.get("source_type") or "").upper()
+                excerpt = str(cit.get("excerpt") or "").strip()
+                ref = str(cit.get("reference") or "").strip() or "Trich dan"
+                if src in {"SUBMISSION", "VIVA"} and excerpt:
+                    valid_citations.append({"source_type": src, "reference": ref, "excerpt": excerpt})
+
+            if not valid_citations:
+                missing_any_citation = True
+
+            total_score += pts
+            proposals.append({
+                "criterion_id": cid,
+                "criterion_title": str(crit.get("title", "")),
+                "max_points": round(max_pts, 2),
+                "proposed_points": round(pts, 2),
+                "rating_level_label": str(item.get("rating_level_label") or "Can xem xet"),
+                "explanation": str(item.get("explanation") or "De xuat tham khao tu tro ly AI."),
+                "citations": valid_citations,
+            })
+
+        # BR-EVIDENCE-SUFFICIENCY: If any criterion lacks real citations, enforce HUMAN_REVIEW
+        if missing_any_citation and flag != "CONFLICTING":
+            flag = "HUMAN_REVIEW"
+
+        return {
+            "evidence_flag": flag,
+            "proposed_total_score": round(min(10.0, total_score), 2),
+            "summary_comment": str(raw.get("summary_comment") or "Hoan tat doi soat minh chung theo Rubric."),
+            "criteria_proposals": proposals,
+        }
+
+    @staticmethod
+    def _build_human_review_fallback(
+        rubric_criteria: List[Dict[str, Any]],
+        reason: str,
+    ) -> Dict[str, Any]:
+        """Safe fallback returning HUMAN_REVIEW without blocking SpeedGrader (E-12 / E-EVAL-01)."""
+        return {
+            "evidence_flag": "HUMAN_REVIEW",
+            "proposed_total_score": None,
+            "summary_comment": reason,
+            "generation_source": "deterministic_fallback",
+            "criteria_proposals": [
+                {
+                    "criterion_id": str(c.get("id")),
+                    "criterion_title": str(c.get("title", "")),
+                    "max_points": round(float(c.get("max_points", 0.0)), 2),
+                    "proposed_points": 0.0,
+                    "rating_level_label": "Can Giang vien danh gia",
+                    "explanation": reason,
+                    "citations": [],
+                }
+                for c in rubric_criteria
+            ],
+        }
