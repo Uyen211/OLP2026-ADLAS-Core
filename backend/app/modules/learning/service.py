@@ -609,6 +609,36 @@ class LearningMaterialService:
             f"Định dạng tệp '{ext}' không được hỗ trợ. Vui lòng tải lên PDF, PPT/PPTX, MP4/WEBM, DOCX, TXT hoặc Markdown."
         )
 
+    @staticmethod
+    def _resolve_base_upload_dir() -> str:
+        """Resolve the base upload directory for the current runtime environment."""
+        base_upload_dir = os.getenv("UPLOAD_DIR")
+        if base_upload_dir:
+            return base_upload_dir
+        if os.path.exists("/app"):
+            return "/app/uploads"
+        return os.path.join(os.path.expanduser("~"), ".adlas", "uploads")
+
+    @classmethod
+    def _resolve_local_path(cls, raw_path: str) -> str:
+        """Resolve a stored file_url (relative 'materials/...' or legacy OS path) to local filesystem path."""
+        if not raw_path:
+            return raw_path
+        normalized = raw_path.replace("\\", "/")
+        if normalized.startswith("http://") or normalized.startswith("https://"):
+            return raw_path
+
+        base_dir = cls._resolve_base_upload_dir()
+        if normalized.startswith("materials/"):
+            return os.path.join(base_dir, normalized)
+
+        marker = "/materials/"
+        if marker in normalized:
+            rel_part = "materials/" + normalized.split(marker, 1)[1]
+            return os.path.join(base_dir, rel_part)
+
+        return raw_path
+
     async def upload_material_file(
         self,
         course_id: uuid.UUID,
@@ -642,16 +672,12 @@ class LearningMaterialService:
             max_bytes = quotas.max_slide_mb * 1024 * 1024
             quota_label = f"{quotas.max_slide_mb}MB"
 
-        base_upload_dir = os.getenv("UPLOAD_DIR")
-        if not base_upload_dir:
-            if os.path.exists("/app"):
-                base_upload_dir = "/app/uploads"
-            else:
-                base_upload_dir = os.path.join(os.path.expanduser("~"), ".adlas", "uploads")
+        base_upload_dir = self._resolve_base_upload_dir()
         upload_dir = os.path.join(base_upload_dir, "materials")
         os.makedirs(upload_dir, exist_ok=True)
         safe_filename = f"{uuid.uuid4()}-{filename}"
         local_path = os.path.join(upload_dir, safe_filename)
+        relative_path = f"materials/{safe_filename}"
 
         total_written = 0
         try:
@@ -675,7 +701,7 @@ class LearningMaterialService:
             raise
 
         return MaterialUploadResponse(
-            file_url=local_path,
+            file_url=relative_path,
             file_name=filename,
             size_bytes=total_written,
             material_type=mat_type,
@@ -720,7 +746,8 @@ class LearningMaterialService:
             if is_locked:
                 raise ModuleLockedException(lock_reason or "Bài học đang tạm khóa.")
 
-        if not os.path.exists(mat.file_url):
+        resolved_path = self._resolve_local_path(mat.file_url)
+        if not resolved_path or not os.path.exists(resolved_path):
             raise LearningMaterialNotFoundException("Tệp học liệu vật lý không tồn tại trên máy chủ lưu trữ.")
 
-        return mat.file_url
+        return resolved_path

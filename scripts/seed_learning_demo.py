@@ -6,6 +6,7 @@
 import asyncio
 from datetime import date, datetime, timedelta, timezone
 import os
+import subprocess
 import sys
 import uuid
 
@@ -39,8 +40,118 @@ def _det_uuid(key: str) -> uuid.UUID:
     return uuid.uuid5(SEED_NS, key)
 
 
+def _generate_real_pdf(filepath: str, title: str, subtitle: str, sections: list[tuple[str, str]]) -> None:
+    """Generate a valid multi-page academic PDF using PyMuPDF (fitz)."""
+    try:
+        import fitz
+
+        doc = fitz.open()
+        page = doc.new_page(width=595, height=842)  # A4
+
+        # Header banner
+        page.draw_rect(fitz.Rect(0, 0, 595, 110), color=(0.12, 0.25, 0.52), fill=(0.12, 0.25, 0.52))
+        page.insert_text((40, 48), title, fontsize=18, fontname="helv", color=(1, 1, 1))
+        page.insert_text((40, 76), subtitle, fontsize=11, fontname="helv", color=(0.85, 0.90, 1.0))
+
+        y = 145
+        for sec_title, sec_body in sections:
+            if y > 740:
+                page = doc.new_page(width=595, height=842)
+                y = 60
+            page.insert_text((40, y), sec_title, fontsize=13, fontname="helv", color=(0.12, 0.25, 0.52))
+            y += 20
+            rect = fitz.Rect(40, y, 555, y + 140)
+            page.insert_textbox(rect, sec_body, fontsize=10.5, fontname="helv", color=(0.15, 0.15, 0.15), lineheight=1.4)
+            y += 120
+
+        # Footer
+        for idx, p in enumerate(doc, start=1):
+            p.insert_text((40, 815), f"ADLAS Learning Material | Page {idx}/{len(doc)}", fontsize=9, color=(0.45, 0.45, 0.45))
+
+        doc.save(filepath)
+        doc.close()
+        return
+    except ImportError:
+        pass
+
+    # Fallback valid minimal PDF if fitz is absent
+    pdf_bytes = (
+        b"%PDF-1.4\n1 0 obj << /Type /Catalog /Pages 2 0 R >> endobj\n"
+        b"2 0 obj << /Type /Pages /Kids [3 0 R] /Count 1 >> endobj\n"
+        b"3 0 obj << /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Contents 4 0 R >> endobj\n"
+        b"4 0 obj << /Length 44 >> stream\nBT /F1 14 Tf 72 720 Td (ADLAS Academic Document) Tj ET\nendstream\nendobj\n"
+        b"xref\n0 5\n0000000000 65535 f \n0000000009 00000 n \n0000000058 00000 n \n"
+        b"0000000115 00000 n \n0000000201 00000 n \n"
+        b"trailer << /Size 5 /Root 1 0 R >>\nstartxref\n295\n%%EOF\n"
+    )
+    with open(filepath, "wb") as f:
+        f.write(pdf_bytes)
+
+
+def _generate_real_pptx(filepath: str, title: str, subtitle: str, slides_data: list[tuple[str, list[str]]]) -> None:
+    """Generate a valid PowerPoint presentation (.pptx) using python-pptx."""
+    try:
+        from pptx import Presentation
+
+        prs = Presentation()
+        # Title slide
+        slide0 = prs.slides.add_slide(prs.slide_layouts[0])
+        slide0.shapes.title.text = title
+        slide0.placeholders[1].text = subtitle
+
+        for s_title, bullets in slides_data:
+            slide = prs.slides.add_slide(prs.slide_layouts[1])
+            slide.shapes.title.text = s_title
+            tf = slide.placeholders[1].text_frame
+            for idx, b in enumerate(bullets):
+                p = tf.paragraphs[0] if idx == 0 else tf.add_paragraph()
+                p.text = b
+        prs.save(filepath)
+        return
+    except ImportError:
+        with open(filepath, "wb") as f:
+            f.write(b"PK\x03\x04ADLAS Slide Deck Placeholder - Run inside Docker to generate full PPTX")
+
+
+def _generate_real_docx(filepath: str, title: str, intro: str, steps: list[str]) -> None:
+    """Generate a valid Word document (.docx) using python-docx."""
+    try:
+        from docx import Document
+
+        doc = Document()
+        doc.add_heading(title, level=1)
+        doc.add_paragraph(intro)
+        doc.add_heading("Huong dan thuc hanh chi tiet", level=2)
+        for step in steps:
+            doc.add_paragraph(step, style="List Bullet")
+        doc.save(filepath)
+        return
+    except ImportError:
+        with open(filepath, "wb") as f:
+            f.write(b"PK\x03\x04ADLAS Docx Placeholder - Run inside Docker to generate full DOCX")
+
+
+def _sync_to_docker_volume(materials_dir: str) -> None:
+    """Sync generated material files into running adlas-backend container volume if running on host."""
+    if os.path.exists("/app"):
+        return
+    try:
+        check = subprocess.run(
+            ["docker", "inspect", "-f", "{{.State.Running}}", "adlas-backend"],
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+        if check.returncode == 0 and check.stdout.strip() == "true":
+            subprocess.run(["docker", "exec", "adlas-backend", "mkdir", "-p", "/app/uploads/materials"], check=True, timeout=5)
+            subprocess.run(["docker", "cp", f"{materials_dir}/.", "adlas-backend:/app/uploads/materials/"], check=True, timeout=15)
+            print(f"[SEED] Synced real material files to adlas-backend:/app/uploads/materials/")
+    except Exception as exc:
+        print(f"[SEED] Note: Could not auto-sync to Docker container ({exc}).")
+
+
 def _ensure_demo_files() -> dict[str, str]:
-    """Create lightweight physical demo files on disk for material download verification."""
+    """Create real academic demo files on disk and return relative storage paths ('materials/<filename>')."""
     base_upload_dir = os.getenv("UPLOAD_DIR")
     if not base_upload_dir:
         if os.path.exists("/app"):
@@ -50,28 +161,149 @@ def _ensure_demo_files() -> dict[str, str]:
     materials_dir = os.path.join(base_upload_dir, "materials")
     os.makedirs(materials_dir, exist_ok=True)
 
-    demo_files = {
-        "it4409_ch1_architecture.pptx": b"ADLAS Demo Slide Deck - IT4409 Chapter 1",
-        "it4409_ch1_rag_guide.pdf": b"%PDF-1.4 Mock PDF Document - RAG Overview for ADLAS",
-        "it4409_ch2_pgvector_handbook.md": b"# Huong dan truy van Cosine Similarity tren pgvector HNSW\n\nNoi dung demo...",
-        "it4409_ch3_socratic.pptx": b"ADLAS Socratic Scaffolding Presentation",
-        "it4409_ch4_lab.docx": b"ADLAS Lab Instructions Draft",
-        "it3080_ch1_osi_tcpip.pptx": b"IT3080 OSI & TCP/IP Slide Deck",
-        "it3080_ch1_rfc_notes.pdf": b"%PDF-1.4 IT3080 Protocol RFC Notes",
-        "it3080_ch2_wireshark_lab.docx": b"IT3080 Wireshark Packet Inspection Lab",
-        "it3080_ch3_firewall_rules.pptx": b"IT3080 Network Defense & Firewall Rules",
-        "it4010_ch1_solid_gof.pptx": b"IT4010 SOLID & Design Patterns",
-        "it4010_ch1_clean_arch.pdf": b"%PDF-1.4 IT4010 Clean Architecture Reading",
-        "it4010_ch2_microservices.md": b"# Microservices & Event-Driven Patterns\n\nDemo handbook...",
-        "it4010_ch3_reliability.pptx": b"IT4010 High Availability & Scalability",
+    pdf_specs = {
+        "it4409_ch1_rag_guide.pdf": (
+            "IT4409 - Huong Dan Kien Truc RAG & Vector DB",
+            "Chuong 1: Tong quan Retrieval-Augmented Generation (LO-01)",
+            [
+                ("1. Kien truc RAG Co ban", "RAG ket hop giua mo hinh ngon ngu lon (LLM) va he thong truy xuat thong tin (Retriever) tu co so du lieu vector nham giam thieu ao giac (hallucination) va cap nhat tri thuc chuyen nganh."),
+                ("2. Quy trinh Chunking & Embedding", "Tai lieu hoc tap duoc chia nho thanh cac doan (chunks) 512 tokens voi overlap 64 tokens. Moi chunk duoc ma hoa thanh vector 1536 chieu va luu vao pgvector voi chi muc HNSW."),
+                ("3. Truy van ngu nghia (Semantic Search)", "Su dung do do Cosine Similarity de tim Top-K doan van ban lien quan nhat truoc khi dua vao prompt cua gia su Socratic."),
+            ],
+        ),
+        "it3080_ch1_rfc_notes.pdf": (
+            "IT3080 - Tong Hop RFC Giao Thuc Mang",
+            "Chuong 1: Mo hinh OSI & TCP/IP Protocol Suite (LO-01)",
+            [
+                ("1. TCP Three-Way Handshake (RFC 793)", "Ket noi TCP duoc thiet lap qua 3 buoc SYN, SYN-ACK, ACK nham dong bo so thu tu goi tin (Sequence Number) va dam bao truyen tin tin cay."),
+                ("2. Kiem soat tac nghen (Congestion Control)", "Cac thuat toan Slow Start, Congestion Avoidance va Fast Recovery giup toi uu bang thong mang va tranh mat goi tin."),
+            ],
+        ),
+        "it4010_ch1_clean_arch.pdf": (
+            "IT4010 - Clean Architecture & Dependency Rule",
+            "Chuong 1: Kien truc phan mem ben vung (LO-01)",
+            [
+                ("1. Nguyen tac Dependency Rule", "Cac tang nghiep vu cot loi (Domain Entities, Use Cases) khong duoc phep phu thuoc vao tang ha tang ben ngoai nhu Database, Framework hay UI."),
+                ("2. Modular Monolith trong ADLAS", "Moi phan he (identity, course, learning, assessment) duoc to chuc doc lap voi ranh gioi giao tiep ro rang qua Service Layer."),
+            ],
+        ),
     }
+
+    pptx_specs = {
+        "it4409_ch1_architecture.pptx": (
+            "IT4409: Kien truc He thong DX-OS",
+            "Chuong 1 - Tong quan kien truc 4 tang ADLAS",
+            [
+                ("Muc tieu Bai giang (LO-01)", ["Nam vung kien truc 4-Tier: Gateway, Core API, Knowledge Engine, Infrastructure", "Hieu vai tro Kong API Gateway va Supabase Auth"]),
+                ("Tich hop pgvector & Repomix", ["Phan tich ma nguon tu dong qua Repomix sidecar", "Luu tru embedding tren PostgreSQL 16 pgvector"]),
+            ],
+        ),
+        "it4409_ch3_socratic.pptx": (
+            "IT4409: Phuong phap Socratic Scaffolding",
+            "Chuong 3 - Thiet ke Agent Ho tro Hoc tap (LO-03)",
+            [
+                ("Nguyen tac Socratic", ["Khong dua ngay dap an cuoi cung cho sinh vien", "Dat cau hoi goi mo tung buoc dua tren ngu canh bai hoc"]),
+                ("Kiem soat ao giac", ["Neo cau tra loi vao tai lieu da duoc giang vien phe duyet"]),
+            ],
+        ),
+        "it3080_ch1_osi_tcpip.pptx": (
+            "IT3080: Mo hinh Phan tang OSI & TCP/IP",
+            "Chuong 1 - Dong goi du lieu & Dinh tuyen",
+            [
+                ("7 Tang OSI vs 4 Tang TCP/IP", ["Application, Transport, Network, Data Link, Physical", "Encapsulation & Decapsulation qua tung tang"]),
+            ],
+        ),
+        "it3080_ch3_firewall_rules.pptx": (
+            "IT3080: Bao mat Mang & Tuong lua",
+            "Chuong 3 - Stateless vs Stateful Firewall",
+            [
+                ("Co che loc goi tin", ["Kiem tra IP nguon/dich, Port va trang thai ket noi TCP", "Thiet ke luat ACL phong chong tan cong DDoS"]),
+            ],
+        ),
+        "it4010_ch1_solid_gof.pptx": (
+            "IT4010: Nguyen ly SOLID & Design Patterns",
+            "Chuong 1 - Thiet ke Huong doi tuong nang cao",
+            [
+                ("5 Nguyen ly SOLID", ["Single Responsibility & Open/Closed Principle", "Dependency Inversion voi FastAPI Depends"]),
+            ],
+        ),
+        "it4010_ch3_reliability.pptx": (
+            "IT4010: High Availability & Scalability",
+            "Chuong 3 - Kien truc he thong chiu tai cao",
+            [
+                ("Chien luoc mo rong", ["Horizontal Scaling voi Docker & Load Balancer", "Circuit Breaker va Retry Policy"]),
+            ],
+        ),
+    }
+
+    docx_specs = {
+        "it4409_ch4_lab.docx": (
+            "IT4409 - Bai Thuc Hanh Lab: Xay Dung RAG Pipeline",
+            "Huong dan sinh vien trien khai he thong truy xuat tai lieu bang PostgreSQL pgvector.",
+            [
+                "Buoc 1: Khoi tao container PostgreSQL 16 voi extension pgvector.",
+                "Buoc 2: Nap tai lieu PDF va thuc hien chunking theo ranh gioi doan van.",
+                "Buoc 3: Tao chi muc HNSW va truy van Top-5 ngu canh lien quan.",
+            ],
+        ),
+        "it3080_ch2_wireshark_lab.docx": (
+            "IT3080 - Bai Thuc Hanh Lab: Phan tich Goi tin Wireshark",
+            "Sinh vien su dung Wireshark de bat va phan tich qua trinh bat tay 3 buoc TCP.",
+            [
+                "Buoc 1: Chon giao dien mang va dat bo loc 'tcp.port == 8080'.",
+                "Buoc 2: Quan sat cac goi tin SYN, SYN-ACK, ACK va Sequence Number.",
+            ],
+        ),
+    }
+
+    md_specs = {
+        "it4409_ch2_pgvector_handbook.md": (
+            "# Cẩm nang: Tối ưu truy vấn Cosine Similarity trên pgvector HNSW\n\n"
+            "## 1. Chỉ mục HNSW (Hierarchical Navigable Small World)\n\n"
+            "HNSW xây dựng đồ thị đa tầng giúp tìm kiếm vector lân cận gần đúng (ANN) với độ phức tạp $O(\\log N)$.\n\n"
+            "```sql\n"
+            "CREATE INDEX ON learning_chunks USING hnsw (embedding vector_cosine_ops)\n"
+            "WITH (m = 16, ef_construction = 64);\n"
+            "```\n\n"
+            "## 2. Công thức Cosine Similarity\n\n"
+            "$$\\text{similarity}(A, B) = \\frac{A \\cdot B}{\\|A\\| \\|B\\|}$$\n\n"
+            "- Giá trị càng gần `1.0` thì hai đoạn văn bản càng tương đồng về mặt ngữ nghĩa.\n"
+        ),
+        "it4010_ch2_microservices.md": (
+            "# Microservices & Event-Driven Patterns\n\n"
+            "## 1. Giao tiếp Bất đồng bộ (Asynchronous Messaging)\n\n"
+            "- Sử dụng Message Broker (Kafka / RabbitMQ) để tách rời các dịch vụ.\n"
+            "- Đảm bảo tính nhất quán cuối cùng (Eventual Consistency) với Outbox Pattern.\n"
+        ),
+    }
+
     paths = {}
-    for fname, data in demo_files.items():
+    for fname, args in pdf_specs.items():
         fpath = os.path.join(materials_dir, fname)
-        if not os.path.exists(fpath):
-            with open(fpath, "wb") as f:
-                f.write(data)
-        paths[fname] = fpath
+        if not os.path.exists(fpath) or os.path.getsize(fpath) < 500:
+            _generate_real_pdf(fpath, *args)
+        paths[fname] = f"materials/{fname}"
+
+    for fname, args in pptx_specs.items():
+        fpath = os.path.join(materials_dir, fname)
+        if not os.path.exists(fpath) or os.path.getsize(fpath) < 500:
+            _generate_real_pptx(fpath, *args)
+        paths[fname] = f"materials/{fname}"
+
+    for fname, args in docx_specs.items():
+        fpath = os.path.join(materials_dir, fname)
+        if not os.path.exists(fpath) or os.path.getsize(fpath) < 500:
+            _generate_real_docx(fpath, *args)
+        paths[fname] = f"materials/{fname}"
+
+    for fname, content in md_specs.items():
+        fpath = os.path.join(materials_dir, fname)
+        if not os.path.exists(fpath) or os.path.getsize(fpath) < 120:
+            with open(fpath, "w", encoding="utf-8") as f:
+                f.write(content)
+        paths[fname] = f"materials/{fname}"
+
+    _sync_to_docker_volume(materials_dir)
     return paths
 
 
@@ -268,6 +500,10 @@ async def _upsert_course_with_data(db, spec: dict, users: dict, file_paths: dict
                         is_published=mat_spec.get("is_published", True),
                     )
                 )
+            else:
+                f_url = mat_spec.get("url") or file_paths.get(mat_spec.get("file", ""), "")
+                if f_url:
+                    existing_mat.file_url = f_url
     await db.flush()
 
     # 5. Assessment, Rubrics & Submissions (TV1 & TV3)
