@@ -303,18 +303,19 @@ class LearningModuleService:
         if not mod or mod.course_id != course_id:
             raise LearningModuleNotFoundException()
 
-        if payload.prerequisite_module_id is not None:
-            await self._assert_no_circular_dependency(course_id, mod.id, payload.prerequisite_module_id)
+        fields_set = payload.model_fields_set
+
+        if "prerequisite_module_id" in fields_set:
+            if payload.prerequisite_module_id is not None:
+                await self._assert_no_circular_dependency(course_id, mod.id, payload.prerequisite_module_id)
             mod.prerequisite_module_id = payload.prerequisite_module_id
 
         if payload.title is not None:
             mod.title = payload.title.strip()
         if payload.order_index is not None:
             mod.order_index = payload.order_index
-        if payload.unlock_at is not None:
+        if "unlock_at" in fields_set:
             mod.unlock_at = payload.unlock_at
-        if payload.prerequisite_module_id is not None:
-            mod.prerequisite_module_id = payload.prerequisite_module_id
         if payload.is_published is not None:
             mod.is_published = payload.is_published
 
@@ -519,16 +520,19 @@ class LearningMaterialService:
         if not mod or mod.course_id != course_id:
             raise LearningMaterialNotFoundException()
 
+        fields_set = payload.model_fields_set
+
         if payload.title is not None:
             mat.title = payload.title.strip()
         if payload.material_type is not None:
             mat.material_type = payload.material_type.value
-        if payload.lo_id is not None:
-            los = await self.course_service.get_learning_objectives(course_id)
-            if not any(lo.id == payload.lo_id for lo in los):
-                raise LearningMaterialNotFoundException("Chuẩn đầu ra không tồn tại trong môn học.")
+        if "lo_id" in fields_set:
+            if payload.lo_id is not None:
+                los = await self.course_service.get_learning_objectives(course_id)
+                if not any(lo.id == payload.lo_id for lo in los):
+                    raise LearningMaterialNotFoundException("Chuẩn đầu ra không tồn tại trong môn học.")
             mat.lo_id = payload.lo_id
-        if payload.file_url is not None:
+        if "file_url" in fields_set:
             mat.file_url = payload.file_url
         if payload.is_mandatory is not None:
             mat.is_mandatory = payload.is_mandatory

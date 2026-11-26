@@ -367,3 +367,73 @@ def test_router_resolve_media_type():
     assert _resolve_media_type("demo.mp4") == "video/mp4"
     assert _resolve_media_type("handbook.md") == "text/markdown; charset=utf-8"
     assert "presentationml" in _resolve_media_type("slides.pptx")
+
+
+@pytest.mark.asyncio
+async def test_update_module_clears_prerequisite_and_unlock_at_when_null_sent(
+    mock_db, course_id, instructor_id, mock_course_service
+):
+    """Explicitly passing None for prerequisite_module_id and unlock_at clears them in DB."""
+    from datetime import datetime, timezone
+    from app.modules.learning.schemas import ModuleUpdate
+
+    mod = LearningModule(
+        id=uuid.uuid4(),
+        course_id=course_id,
+        title="Chương 2",
+        order_index=2,
+        prerequisite_module_id=uuid.uuid4(),
+        unlock_at=datetime.now(timezone.utc),
+        is_published=True,
+        created_at=datetime.now(timezone.utc),
+        materials=[],
+    )
+    repo = MagicMock(spec=LearningRepository)
+    repo.get_module = AsyncMock(return_value=mod)
+    repo.update_module = AsyncMock(return_value=mod)
+
+    service = LearningModuleService(mock_db, repo=repo)
+    service.course_service = mock_course_service
+
+    payload = ModuleUpdate.model_validate({"prerequisite_module_id": None, "unlock_at": None})
+    await service.update_module(course_id, mod.id, payload, instructor_id)
+
+    assert mod.prerequisite_module_id is None
+    assert mod.unlock_at is None
+
+
+@pytest.mark.asyncio
+async def test_update_material_clears_lo_id_and_file_url_when_null_sent(
+    mock_db, course_id, instructor_id, mock_course_service
+):
+    """Explicitly passing None for lo_id and file_url clears them in DB."""
+    from datetime import datetime, timezone
+    from app.modules.learning.models import LearningMaterial
+    from app.modules.learning.schemas import MaterialUpdate
+
+    mod = LearningModule(id=uuid.uuid4(), course_id=course_id, title="Chương 1", is_published=True)
+    mat = LearningMaterial(
+        id=uuid.uuid4(),
+        module_id=mod.id,
+        lo_id=uuid.uuid4(),
+        title="Tài liệu cũ",
+        material_type=MaterialType.PDF.value,
+        file_url="materials/old.pdf",
+        is_mandatory=True,
+        est_duration_minutes=30,
+        is_published=True,
+        created_at=datetime.now(timezone.utc),
+    )
+    repo = MagicMock(spec=LearningRepository)
+    repo.get_material = AsyncMock(return_value=mat)
+    repo.get_module = AsyncMock(return_value=mod)
+    repo.update_material = AsyncMock(return_value=mat)
+
+    service = LearningMaterialService(mock_db, repo=repo)
+    service.course_service = mock_course_service
+
+    payload = MaterialUpdate.model_validate({"lo_id": None, "file_url": None})
+    await service.update_material(course_id, mat.id, payload, instructor_id)
+
+    assert mat.lo_id is None
+    assert mat.file_url is None
