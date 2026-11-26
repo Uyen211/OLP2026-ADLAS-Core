@@ -26,7 +26,7 @@ from app.modules.assessment.models import (
 from app.modules.course.models import Course, LearningObjective
 from app.modules.gradebook.enums import EvidenceFlag, GradeItemType, GradingStatus
 from app.modules.gradebook.models import (
-    Grade,
+    GradeEntry,
     GradebookColumn,
     GradebookGroup,
 )
@@ -248,15 +248,15 @@ async def seed_gradebook_demo() -> None:
             for col, score_val, status_val, sub_id in sample_scores:
                 exists = (
                     await db.execute(
-                        select(Grade).where(
-                            Grade.column_id == col.id,
-                            Grade.user_id == student1.id,
+                        select(GradeEntry).where(
+                            GradeEntry.column_id == col.id,
+                            GradeEntry.user_id == student1.id,
                         )
                     )
                 ).scalar_one_or_none()
                 if not exists:
                     db.add(
-                        Grade(
+                        GradeEntry(
                             column_id=col.id,
                             user_id=student1.id,
                             submission_id=sub_id,
@@ -268,15 +268,15 @@ async def seed_gradebook_demo() -> None:
             btl_col = cols_map[GradeItemType.ASSIGNMENT.value]
             btl_grade = (
                 await db.execute(
-                    select(Grade).where(
-                        Grade.column_id == btl_col.id,
-                        Grade.user_id == student1.id,
+                    select(GradeEntry).where(
+                        GradeEntry.column_id == btl_col.id,
+                        GradeEntry.user_id == student1.id,
                     )
                 )
             ).scalar_one_or_none()
             if not btl_grade and sub:
                 db.add(
-                    Grade(
+                    GradeEntry(
                         column_id=btl_col.id,
                         user_id=student1.id,
                         submission_id=sub.id,

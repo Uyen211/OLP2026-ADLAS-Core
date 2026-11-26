@@ -106,11 +106,14 @@ services:
     ports:
       - "9000:8000"
     networks:
-      - adlas-network
+      adlas-network:
+        aliases:
+          - s3.docker.test
+          - cloudserver-front
     deploy:
       resources:
         limits:
-          memory: 256M
+          memory: 512M
 
   # Tier 2: FastAPI Core Application Engine
   backend:
@@ -123,6 +126,7 @@ services:
       - .env
     environment:
       REPOMIX_SERVICE_URL: "http://repomix:3000"
+      MINIO_ENDPOINT: "s3.docker.test:8000"
     volumes:
       - uploads_data:/app/uploads
     ports:

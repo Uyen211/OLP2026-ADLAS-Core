@@ -5,6 +5,10 @@ The format is based on Keep a Changelog, and this project adheres to Semantic Ve
 
 ## [Unreleased]
 ### Added
+- Added Module 5 (Gradebook & SpeedGrader) backend services, API routes, TT08/2021 calculation engine, Hurdle rule, Muted Gradebook isolation, and Poka-Yoke final lock with PostgreSQL trigger protection.
+- Added SpeedGrader 3-column grading cockpit, AI Rubric cross-evidence proposal UI, and Gradebook management pages in the Main App frontend.
+- Added dual-mode `ObjectStorageClient` (Supabase Storage / S3-compatible proxy) and PostgreSQL persistence for revoked JWTs and gateway IP whitelist.
+- Added `06-gradebook-extensions.sql`, `07-storage-security-persistence.sql`, `scripts/seed_gradebook_demo.py`, and `tests/integration/test_gradebook_flow.py`.
 - Integrated live status telemetry from Kong Admin API (Port 8001 /status) into GatewayAdminService.
 - Implemented resilient fallback mechanism when Kong Admin API is unreachable.
 - Added live telemetry badges and real-time Nginx connection details to Web Admin Console.
