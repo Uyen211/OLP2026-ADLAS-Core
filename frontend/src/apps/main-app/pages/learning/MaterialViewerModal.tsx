@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: MIT
  */
 
-import React, { useEffect, useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import {
   AlertCircle,
   Clock,
@@ -18,9 +18,12 @@ import {
 import { learningService } from "../../../../services/learningService";
 import { ApiError } from "../../../../services/httpClient";
 import type { LOResponse } from "../../../../types/course";
-import type { LearningMaterial, MaterialType } from "../../../../types/learning";
+import type { LearningMaterial, MaterialCheckpoint, MaterialType } from "../../../../types/learning";
 import { BloomBadge } from "../../components/BloomBadge";
 import { MmButton } from "../../components/MmButton";
+import { showToast } from "../../components/Toast";
+import { DocumentCheckpointsPanel } from "./DocumentCheckpointsPanel";
+import { InteractiveVideoPlayer } from "./InteractiveVideoPlayer";
 
 export interface MaterialViewerModalProps {
   open: boolean;
@@ -69,19 +72,53 @@ export const MaterialViewerModal: React.FC<MaterialViewerModalProps> = ({
   const [objectUrl, setObjectUrl] = useState<string | null>(null);
   const [textContent, setTextContent] = useState<string | null>(null);
   const [contentType, setContentType] = useState<string>("");
+  const [checkpoints, setCheckpoints] = useState<MaterialCheckpoint[]>([]);
+  const [isCompleted, setIsCompleted] = useState(false);
+  const [completing, setCompleting] = useState(false);
 
   const isExternalUrl = Boolean(
     material?.file_url &&
       (material.file_url.startsWith("http://") || material.file_url.startsWith("https://"))
   );
 
+  const handleCheckpointPassed = useCallback((checkpointId: string) => {
+    setCheckpoints((prev) =>
+      prev.map((c) => (c.id === checkpointId ? { ...c, is_passed: true } : c))
+    );
+  }, []);
+
+  const handleCompleteMaterial = useCallback(async () => {
+    if (!material || completing || isCompleted) return;
+    setCompleting(true);
+    try {
+      await learningService.completeMaterial(courseId, material.id);
+      setIsCompleted(true);
+      showToast("success", "Chúc mừng! Bạn đã hoàn thành học liệu này.");
+    } catch (err) {
+      showToast(
+        "error",
+        err instanceof ApiError ? err.message : "Chưa thể hoàn thành học liệu."
+      );
+    } finally {
+      setCompleting(false);
+    }
+  }, [courseId, material, completing, isCompleted]);
+
   useEffect(() => {
-    if (!open || !material || !material.file_url) {
+    if (!open || !material) {
       return;
     }
 
-    // Record completion progress in background (unlocks prerequisite modules for students)
-    learningService.completeMaterial(courseId, material.id).catch(() => {});
+    setIsCompleted(false);
+    setCheckpoints([]);
+    learningService
+      .listCheckpoints(courseId, material.id)
+      .then((list) => setCheckpoints(list))
+      .catch(() => setCheckpoints([]));
+
+    if (!material.file_url) {
+      return;
+    }
 
     if (isExternalUrl) {
       setLoading(false);
@@ -235,10 +272,13 @@ export const MaterialViewerModal: React.FC<MaterialViewerModalProps> = ({
                 />
               </div>
             ) : isVideo ? (
-              <video
-                controls
-                className="max-h-[66vh] w-full rounded-mm border border-mm-divider bg-black"
+              <InteractiveVideoPlayer
+                courseId={courseId}
                 src={fileUrl}
+                checkpoints={checkpoints}
+                isCompleted={isCompleted}
+                onCheckpointPassed={handleCheckpointPassed}
+                onReadyToComplete={handleCompleteMaterial}
               />
             ) : (
               <div className="flex flex-col items-center justify-center gap-4 rounded-mm border border-mm-divider bg-mm-surface p-10 text-center">
@@ -271,10 +311,13 @@ export const MaterialViewerModal: React.FC<MaterialViewerModalProps> = ({
               className="h-[68vh] w-full rounded-mm border border-mm-divider bg-white"
             />
           ) : isVideo && objectUrl ? (
-            <video
-              controls
-              className="max-h-[68vh] w-full rounded-mm border border-mm-divider bg-black"
+            <InteractiveVideoPlayer
+              courseId={courseId}
               src={objectUrl}
+              checkpoints={checkpoints}
+              isCompleted={isCompleted}
+              onCheckpointPassed={handleCheckpointPassed}
+              onReadyToComplete={handleCompleteMaterial}
             />
           ) : isOfficeDoc ? (
             <div className="flex flex-col items-center justify-center gap-4 rounded-mm border border-mm-divider bg-mm-surface p-12 text-center">
@@ -300,6 +343,17 @@ export const MaterialViewerModal: React.FC<MaterialViewerModalProps> = ({
                 <span>Tải về tệp gốc</span>
               </MmButton>
             </div>
+          )}
+
+          {!isVideo && !loading && !error && (
+            <DocumentCheckpointsPanel
+              courseId={courseId}
+              checkpoints={checkpoints}
+              isCompleted={isCompleted}
+              completing={completing}
+              onCheckpointPassed={handleCheckpointPassed}
+              onCompleteMaterial={handleCompleteMaterial}
+            />
           )}
         </div>
 
