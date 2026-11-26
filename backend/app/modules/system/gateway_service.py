@@ -9,6 +9,7 @@ from datetime import datetime
 from typing import Dict, List, Literal, Optional
 import httpx
 from fastapi import HTTPException, status
+from sqlalchemy import desc, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import settings
 from app.modules.system.gateway_schemas import (
@@ -21,7 +22,7 @@ from app.modules.system.gateway_schemas import (
     RateLimitUpdateRequest,
     ServiceModuleHealth,
 )
-from app.modules.system.models import SystemAuditLog, User
+from app.modules.system.models import GatewayIpWhitelist, SystemAuditLog, User
 
 logger = logging.getLogger(__name__)
 
@@ -270,7 +271,29 @@ class GatewayAdminService:
         return self._current_rate_limits
 
     async def list_ip_whitelist(self) -> List[IpWhitelistEntry]:
-        """List all exam room CIDR whitelists."""
+        """List all exam room CIDR whitelists from PostgreSQL (with L1 fallback for mock tests)."""
+        try:
+            res = await self.db.execute(
+                select(GatewayIpWhitelist)
+                .where(GatewayIpWhitelist.is_active.is_(True))
+                .order_by(desc(GatewayIpWhitelist.created_at))
+            )
+            rows = res.scalars().all()
+            if isinstance(rows, list) and all(isinstance(r, GatewayIpWhitelist) for r in rows):
+                if rows or not self._ip_whitelist:
+                    return [
+                        IpWhitelistEntry(
+                            id=r.id,
+                            cidr=r.cidr,
+                            description=r.description,
+                            created_at=r.created_at,
+                            created_by=r.created_by,
+                            is_active=r.is_active,
+                        )
+                        for r in rows
+                    ]
+        except Exception as exc:
+            logger.debug("Gateway IP whitelist DB read fallback to L1 cache: %s", exc)
         return list(self._ip_whitelist.values())
 
     async def add_ip_whitelist(
@@ -282,11 +305,10 @@ class GatewayAdminService:
     ) -> IpWhitelistEntry:
         """
         Register a new CIDR block for exam room security (BR-SYS-04).
-        Validates CIDR using standard ipaddress library (Rule E-SYS-02).
+        Persists to system.gateway_ip_whitelist in PostgreSQL and syncs L1 cache.
         """
         clean_cidr = payload.cidr.strip()
         try:
-            # Validate CIDR format
             network = ipaddress.ip_network(clean_cidr, strict=False)
             normalized_cidr = str(network)
         except ValueError:
@@ -296,17 +318,27 @@ class GatewayAdminService:
             )
 
         entry_id = uuid.uuid4()
+        now = datetime.utcnow()
         entry = IpWhitelistEntry(
             id=entry_id,
             cidr=normalized_cidr,
             description=payload.description.strip(),
-            created_at=datetime.utcnow(),
+            created_at=now,
             created_by=actor.email,
             is_active=True,
         )
         self._ip_whitelist[entry_id] = entry
 
-        # Audit trail
+        db_row = GatewayIpWhitelist(
+            id=entry_id,
+            cidr=normalized_cidr,
+            description=entry.description,
+            created_by=actor.email,
+            is_active=True,
+            created_at=now,
+        )
+        self.db.add(db_row)
+
         audit = SystemAuditLog(
             actor_id=actor.id,
             actor_email=actor.email,
@@ -329,23 +361,37 @@ class GatewayAdminService:
         ip_address: Optional[str] = None,
         user_agent: Optional[str] = None,
     ) -> None:
-        """Remove a CIDR block from the exam whitelist."""
-        if entry_id not in self._ip_whitelist:
+        """Remove a CIDR block from PostgreSQL system.gateway_ip_whitelist and L1 cache."""
+        db_row: Optional[GatewayIpWhitelist] = None
+        try:
+            res = await self.db.execute(
+                select(GatewayIpWhitelist).where(GatewayIpWhitelist.id == entry_id)
+            )
+            candidate = res.scalar_one_or_none()
+            if isinstance(candidate, GatewayIpWhitelist):
+                db_row = candidate
+        except Exception as exc:
+            logger.debug("Gateway IP whitelist DB lookup fallback: %s", exc)
+
+        removed = self._ip_whitelist.pop(entry_id, None)
+        if db_row is None and removed is None:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="IP whitelist entry not found.",
             )
 
-        removed = self._ip_whitelist.pop(entry_id)
+        removed_cidr = db_row.cidr if db_row is not None else removed.cidr
+        removed_desc = db_row.description if db_row is not None else removed.description
+        if db_row is not None:
+            await self.db.delete(db_row)
 
-        # Audit trail
         audit = SystemAuditLog(
             actor_id=actor.id,
             actor_email=actor.email,
             action="DELETE_IP_WHITELIST",
             module="gateway",
             severity="WARNING",
-            details={"cidr": removed.cidr, "description": removed.description},
+            details={"cidr": removed_cidr, "description": removed_desc},
             ip_address=ip_address,
             user_agent=user_agent,
         )

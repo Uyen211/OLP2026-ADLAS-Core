@@ -14,6 +14,7 @@ from app.core.security import (
     decode_access_token,
     hash_password,
     revoke_token,
+    revoke_token_persistent,
     verify_password,
 )
 from app.modules.identity.exceptions import (
@@ -348,8 +349,8 @@ class AuthService:
         return await self._build_me_response(user)
 
     async def logout(self, access_token: str) -> None:
-        """Revoke the current access token via core.security token blacklist."""
-        revoke_token(access_token)
+        """Persistently revoke the current access token in PostgreSQL and L1 cache."""
+        await revoke_token_persistent(self.db, access_token)
 
     async def setup_mfa(self, user: User) -> MfaSetupResponse:
         """Generate and store a pending TOTP secret for enrollment."""

@@ -114,3 +114,29 @@ class BackupHistory(Base):
     created_by = Column(UUID(as_uuid=True), ForeignKey("identity.users.id", ondelete="SET NULL"), nullable=True)
     created_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
     status = Column(String(30), nullable=False, default="COMPLETED")
+
+
+class RevokedToken(Base):
+    """Persistent JWT blacklist entry in identity.revoked_tokens surviving container restarts."""
+
+    __tablename__ = "revoked_tokens"
+    __table_args__ = {"schema": "identity"}
+
+    token_hash = Column(String(64), primary_key=True)
+    user_id = Column(UUID(as_uuid=True), ForeignKey("identity.users.id", ondelete="SET NULL"), nullable=True)
+    revoked_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
+    expires_at = Column(DateTime(timezone=True), nullable=False, index=True)
+
+
+class GatewayIpWhitelist(Base):
+    """Persistent exam room CIDR whitelist entry in system.gateway_ip_whitelist."""
+
+    __tablename__ = "gateway_ip_whitelist"
+    __table_args__ = {"schema": "system"}
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    cidr = Column(String(64), nullable=False)
+    description = Column(String(255), nullable=False)
+    created_by = Column(String(150), nullable=False)
+    is_active = Column(Boolean, nullable=False, default=True)
+    created_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))

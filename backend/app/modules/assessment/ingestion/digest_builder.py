@@ -11,6 +11,7 @@ import tempfile
 from typing import Any, Dict, Optional
 import uuid
 import zipfile
+from app.core.storage_client import STORAGE_URI_PREFIX, storage_client
 from app.modules.ai_gateway.service import AIGatewayService
 from app.modules.assessment.ingestion.document_summarizer import DocumentSummarizer
 from app.modules.assessment.ingestion.repomix_client import RepomixClient
@@ -80,62 +81,78 @@ class UniversalDigestBuilder:
                 },
             )
 
-        # 2. File Upload Submission
-        if file_path and os.path.exists(file_path):
-            ext = os.path.splitext(file_path)[1].lower()
+        # 2. File Upload Submission (supports storage:// Supabase/S3 URI and legacy local paths)
+        resolved_path = file_path
+        cleanup_temp = False
+        if file_path and file_path.startswith(STORAGE_URI_PREFIX):
+            try:
+                resolved_path, cleanup_temp = await storage_client.materialize_temp_file(file_path)
+            except Exception as exc:
+                logger.warning("Failed to materialize storage object %s: %s", file_path, exc)
+                resolved_path = None
 
-            # Zip / Tar Archive (Source code) -> extract to shared directory for Repomix AST packing
-            if ext in {".zip", ".tar", ".gz", ".tgz"}:
-                extract_dir = self._safe_extract_archive(file_path, ext)
-                try:
-                    pack_res = await self.repomix_client.pack_source_code(
-                        source_path=extract_dir,
-                        max_tokens=45000,
+        try:
+            if resolved_path and os.path.exists(resolved_path):
+                ext = os.path.splitext(resolved_path)[1].lower()
+
+                # Zip / Tar Archive (Source code) -> extract to shared directory for Repomix AST packing
+                if ext in {".zip", ".tar", ".gz", ".tgz"}:
+                    extract_dir = self._safe_extract_archive(resolved_path, ext)
+                    try:
+                        pack_res = await self.repomix_client.pack_source_code(
+                            source_path=extract_dir,
+                            max_tokens=45000,
+                        )
+                    finally:
+                        if extract_dir and os.path.exists(extract_dir):
+                            shutil.rmtree(extract_dir, ignore_errors=True)
+
+                    packed_xml = pack_res.get("packed_xml", "")
+                    summary, mode = await self.ai_gateway.summarize_submission(
+                        digest_type="CODE",
+                        raw_content=packed_xml,
+                        project_title=project_title,
+                        assignment_title=assignment_title,
                     )
-                finally:
-                    if extract_dir and os.path.exists(extract_dir):
-                        shutil.rmtree(extract_dir, ignore_errors=True)
+                    return UniversalSubmissionDigest(
+                        digest_type="CODE",
+                        content=summary,
+                        metadata={
+                            "source": "zip_archive",
+                            "file_name": file_name or os.path.basename(resolved_path),
+                            "repomix_source": pack_res.get("source"),
+                            "estimated_tokens": pack_res.get("estimated_tokens", 0),
+                            "summarizer_mode": mode,
+                        },
+                    )
 
-                packed_xml = pack_res.get("packed_xml", "")
-                summary, mode = await self.ai_gateway.summarize_submission(
-                    digest_type="CODE",
-                    raw_content=packed_xml,
-                    project_title=project_title,
-                    assignment_title=assignment_title,
-                )
-                return UniversalSubmissionDigest(
-                    digest_type="CODE",
-                    content=summary,
-                    metadata={
-                        "source": "zip_archive",
-                        "file_name": file_name or os.path.basename(file_path),
-                        "repomix_source": pack_res.get("source"),
-                        "estimated_tokens": pack_res.get("estimated_tokens", 0),
-                        "summarizer_mode": mode,
-                    },
-                )
-
-            # Document (PDF, DOCX, TXT, MD)
-            elif ext in {".pdf", ".docx", ".txt", ".md"}:
-                raw_text = self.summarizer.extract_text_from_file(file_path)
-                doc_label = file_name or os.path.basename(file_path)
-                summary, mode = await self.ai_gateway.summarize_submission(
-                    digest_type="DOCUMENT",
-                    raw_content=raw_text,
-                    project_title=project_title or doc_label,
-                    assignment_title=assignment_title,
-                )
-                return UniversalSubmissionDigest(
-                    digest_type="DOCUMENT",
-                    content=summary,
-                    metadata={
-                        "source": "document_report",
-                        "file_name": doc_label,
-                        "original_word_count": len(raw_text.split()),
-                        "digest_word_count": len(summary.split()),
-                        "summarizer_mode": mode,
-                    },
-                )
+                # Document (PDF, DOCX, TXT, MD)
+                elif ext in {".pdf", ".docx", ".txt", ".md"}:
+                    raw_text = self.summarizer.extract_text_from_file(resolved_path)
+                    doc_label = file_name or os.path.basename(resolved_path)
+                    summary, mode = await self.ai_gateway.summarize_submission(
+                        digest_type="DOCUMENT",
+                        raw_content=raw_text,
+                        project_title=project_title or doc_label,
+                        assignment_title=assignment_title,
+                    )
+                    return UniversalSubmissionDigest(
+                        digest_type="DOCUMENT",
+                        content=summary,
+                        metadata={
+                            "source": "document_report",
+                            "file_name": doc_label,
+                            "original_word_count": len(raw_text.split()),
+                            "digest_word_count": len(summary.split()),
+                            "summarizer_mode": mode,
+                        },
+                    )
+        finally:
+            if cleanup_temp and resolved_path and os.path.exists(resolved_path):
+                try:
+                    os.remove(resolved_path)
+                except OSError:
+                    pass
 
         # Fallback when no content could be extracted from file
         doc_label = file_name or (os.path.basename(file_path) if file_path else "Tài liệu nộp bài")

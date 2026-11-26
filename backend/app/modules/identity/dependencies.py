@@ -9,7 +9,7 @@ import uuid
 from fastapi import Depends, Header
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.database import get_db
-from app.core.security import decode_access_token
+from app.core.security import decode_access_token, is_token_revoked_persistent
 from app.modules.identity.exceptions import UnauthorizedTokenException
 from app.modules.identity.repository import IdentityRepository
 from app.modules.system.models import User
@@ -47,6 +47,8 @@ async def get_current_user(
     """
     payload = decode_access_token(token)
     if payload is None or payload.get("type") != "access" or "sub" not in payload:
+        raise UnauthorizedTokenException()
+    if await is_token_revoked_persistent(db, token):
         raise UnauthorizedTokenException()
 
     try:

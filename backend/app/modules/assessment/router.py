@@ -8,7 +8,9 @@ from typing import List
 import uuid
 from fastapi import APIRouter, BackgroundTasks, Depends, File, UploadFile, status
 from sqlalchemy.ext.asyncio import AsyncSession
+from app.core.config import settings
 from app.core.database import get_db
+from app.core.storage_client import storage_client
 from app.modules.assessment.exceptions import InvalidSubmissionPayloadException
 from app.modules.assessment.schemas import (
     AssignmentDetailResponse,
@@ -202,27 +204,32 @@ async def upload_submission_file(
     file: UploadFile = File(...),
     current_user: CurrentUser = Depends(get_current_user)
 ):
-    """Directly save submission file (PDF, DOCX, ZIP) to shared volume for ingestion."""
+    """Upload submission file (PDF, DOCX, ZIP) to Supabase Storage / S3 (with safe fallback)."""
     filename = os.path.basename(file.filename or "submission")
     ext = os.path.splitext(filename)[1].lower()
     if ext not in ALLOWED_UPLOAD_EXTS:
         raise InvalidSubmissionPayloadException(f"Unsupported upload file format: {ext}")
 
-    safe_name = f"{uuid.uuid4()}-{filename}"
-    local_path = os.path.join(UPLOAD_DIR, safe_name)
-    total_written = 0
-    with open(local_path, "wb") as buffer:
-        while chunk := await file.read(1024 * 1024):
-            total_written += len(chunk)
-            if total_written > MAX_UPLOAD_BYTES:
-                buffer.close()
-                if os.path.exists(local_path):
-                    os.remove(local_path)
-                raise InvalidSubmissionPayloadException("Uploaded file exceeds maximum 50MB limit.")
-            buffer.write(chunk)
+    chunks = []
+    total_read = 0
+    while chunk := await file.read(1024 * 1024):
+        total_read += len(chunk)
+        if total_read > MAX_UPLOAD_BYTES:
+            raise InvalidSubmissionPayloadException("Uploaded file exceeds maximum 50MB limit.")
+        chunks.append(chunk)
+
+    raw_bytes = b"".join(chunks)
+    object_key = f"{current_user.id}/{uuid.uuid4()}-{filename}"
+    stored_uri = await storage_client.upload_bytes(
+        bucket=settings.MINIO_BUCKET_SUBMISSIONS,
+        object_key=object_key,
+        data=raw_bytes,
+        content_type=file.content_type or "application/octet-stream",
+    )
     return {
-        "file_url": local_path,
+        "file_url": stored_uri,
         "file_name": filename,
+        "storage_backend": storage_client.last_backend,
     }
 
 

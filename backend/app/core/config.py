@@ -17,12 +17,16 @@ class Settings(BaseSettings):
     # Database
     DATABASE_URL: str = "postgresql+asyncpg://adlas_admin:adlas_secure_password@localhost:5432/adlas_db"
 
-    # Storage
-    MINIO_ENDPOINT: str = "localhost:9000"
+    # Storage (Dual-Mode: "supabase" or "s3" via Zenko/MinIO)
+    STORAGE_PROVIDER: str = "s3"
+    MINIO_ENDPOINT: str = "minio:8000"
     MINIO_ROOT_USER: str = "minio_admin"
     MINIO_ROOT_PASSWORD: str = "minio_secure_password"
     MINIO_BUCKET_MATERIALS: str = "adlas-materials"
     MINIO_BUCKET_SUBMISSIONS: str = "adlas-submissions"
+    MINIO_BUCKET_VOICE: str = "adlas-voice-feedback"
+    SUPABASE_URL: Optional[str] = None
+    SUPABASE_SERVICE_ROLE_KEY: Optional[str] = None
 
     # JWT Authentication
     JWT_ALGORITHM: str = "HS256"

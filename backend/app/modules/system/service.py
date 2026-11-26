@@ -7,7 +7,7 @@ import uuid
 from typing import Optional
 from fastapi import HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
-from app.core.security import hash_password, revoke_token
+from app.core.security import hash_password, revoke_token_persistent
 from app.modules.system.models import User
 from app.modules.system.repository import SystemRepository
 from app.modules.system.schemas import (
@@ -252,8 +252,8 @@ class SystemAuthService:
         ip_address: Optional[str] = None,
         user_agent: Optional[str] = None
     ) -> dict:
-        """Revoke a user session immediately via in-memory blacklist and audit logging."""
-        revoke_token(payload.session_id)
+        """Revoke a user session persistently in identity.revoked_tokens and audit log."""
+        await revoke_token_persistent(self.repo.db, payload.session_id, user_id=actor.id)
 
         await self.repo.log_audit(
             actor_id=actor.id,
