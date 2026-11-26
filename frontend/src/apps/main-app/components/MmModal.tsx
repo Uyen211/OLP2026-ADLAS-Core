@@ -12,6 +12,9 @@ export interface MmModalProps {
   title: string;
   subtitle?: string;
   onClose: () => void;
+  closeOnBackdrop?: boolean;
+  closeOnEscape?: boolean;
+  showCloseButton?: boolean;
   maxWidthClass?: string;
   footer?: React.ReactNode;
   children: React.ReactNode;
@@ -22,18 +25,21 @@ export const MmModal: React.FC<MmModalProps> = ({
   title,
   subtitle,
   onClose,
+  closeOnBackdrop = true,
+  closeOnEscape = true,
+  showCloseButton = true,
   maxWidthClass = "max-w-lg",
   footer,
   children,
 }) => {
   useEffect(() => {
-    if (!open) return;
+    if (!open || !closeOnEscape) return;
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") onClose();
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [open, onClose]);
+  }, [open, closeOnEscape, onClose]);
 
   if (!open) return null;
 
@@ -42,7 +48,9 @@ export const MmModal: React.FC<MmModalProps> = ({
       role="dialog"
       aria-modal="true"
       className="fixed inset-0 z-40 flex items-center justify-center bg-mm-dark/45 p-4 backdrop-blur-[2px]"
-      onClick={onClose}
+      onClick={() => {
+        if (closeOnBackdrop) onClose();
+      }}
     >
       <div
         onClick={(e) => e.stopPropagation()}
@@ -58,14 +66,16 @@ export const MmModal: React.FC<MmModalProps> = ({
               <p className="mt-1 font-mm-ui text-sm text-mm-text-secondary">{subtitle}</p>
             )}
           </div>
-          <button
-            type="button"
-            aria-label="Đóng hộp thoại"
-            onClick={onClose}
-            className="rounded-full p-1.5 text-mm-text-muted transition-colors hover:bg-mm-divider hover:text-mm-heading"
-          >
-            <X className="h-5 w-5" />
-          </button>
+          {showCloseButton && (
+            <button
+              type="button"
+              aria-label="Đóng hộp thoại"
+              onClick={onClose}
+              className="rounded-full p-1.5 text-mm-text-muted transition-colors hover:bg-mm-divider hover:text-mm-heading"
+            >
+              <X className="h-5 w-5" />
+            </button>
+          )}
         </div>
 
         <div className="overflow-y-auto px-6 py-5">{children}</div>
