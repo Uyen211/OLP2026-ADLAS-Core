@@ -458,6 +458,7 @@ async def test_student_complete_material_records_progress(mock_db, course_id, st
     repo = MagicMock(spec=LearningRepository)
     repo.get_material = AsyncMock(return_value=mat)
     repo.get_module = AsyncMock(return_value=mod)
+    repo.get_unpassed_blocking_checkpoints = AsyncMock(return_value=[])
     repo.mark_material_completed = AsyncMock()
 
     course_svc = MagicMock()

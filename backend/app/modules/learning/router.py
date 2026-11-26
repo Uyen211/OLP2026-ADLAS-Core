@@ -5,7 +5,7 @@
 
 import mimetypes
 import os
-from typing import List
+from typing import List, Union
 import uuid
 from fastapi import APIRouter, Depends, File, UploadFile, status
 from fastapi.responses import FileResponse
@@ -13,6 +13,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.database import get_db
 from app.modules.identity.dependencies import CurrentUser, get_current_user
 from app.modules.learning.schemas import (
+    CheckpointCreate,
+    CheckpointInstructorResponse,
+    CheckpointStudentResponse,
+    CheckpointSubmitRequest,
+    CheckpointSubmitResponse,
+    CheckpointUpdate,
     MaterialCreate,
     MaterialResponse,
     MaterialUpdate,
@@ -24,6 +30,7 @@ from app.modules.learning.schemas import (
     PublishToggleRequest,
 )
 from app.modules.learning.service import (
+    LearningCheckpointService,
     LearningMaterialService,
     LearningModuleService,
 )
@@ -359,3 +366,104 @@ async def complete_learning_material(
         is_admin=_is_admin(current_user),
     )
     return {"status": "completed", "material_id": str(material_id)}
+
+
+# -----------------------------------------------------------------------------
+# Interactive Checkpoint Routes (Task T2-P-M2-03)
+# -----------------------------------------------------------------------------
+@router.get(
+    "/materials/{material_id}/checkpoints",
+    response_model=Union[List[CheckpointInstructorResponse], List[CheckpointStudentResponse]],
+)
+async def list_material_checkpoints(
+    course_id: uuid.UUID,
+    material_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: CurrentUser = Depends(get_current_user),
+):
+    """List checkpoints for a material. Students receive pass status without correct_option."""
+    service = LearningCheckpointService(db)
+    return await service.list_checkpoints(
+        course_id=course_id,
+        material_id=material_id,
+        user_id=current_user.user.id,
+        is_admin=_is_admin(current_user),
+    )
+
+
+@router.post(
+    "/materials/{material_id}/checkpoints",
+    response_model=CheckpointInstructorResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+async def create_material_checkpoint(
+    course_id: uuid.UUID,
+    material_id: uuid.UUID,
+    payload: CheckpointCreate,
+    db: AsyncSession = Depends(get_db),
+    current_user: CurrentUser = Depends(get_current_user),
+):
+    """Create a new interactive checkpoint on a video or document (Instructor only)."""
+    service = LearningCheckpointService(db)
+    return await service.create_checkpoint(
+        course_id=course_id,
+        material_id=material_id,
+        payload=payload,
+        user_id=current_user.user.id,
+        is_admin=_is_admin(current_user),
+    )
+
+
+@router.put("/checkpoints/{checkpoint_id}", response_model=CheckpointInstructorResponse)
+async def update_material_checkpoint(
+    course_id: uuid.UUID,
+    checkpoint_id: uuid.UUID,
+    payload: CheckpointUpdate,
+    db: AsyncSession = Depends(get_db),
+    current_user: CurrentUser = Depends(get_current_user),
+):
+    """Update an existing checkpoint (Instructor only)."""
+    service = LearningCheckpointService(db)
+    return await service.update_checkpoint(
+        course_id=course_id,
+        checkpoint_id=checkpoint_id,
+        payload=payload,
+        user_id=current_user.user.id,
+        is_admin=_is_admin(current_user),
+    )
+
+
+@router.delete("/checkpoints/{checkpoint_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_material_checkpoint(
+    course_id: uuid.UUID,
+    checkpoint_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: CurrentUser = Depends(get_current_user),
+):
+    """Delete an interactive checkpoint (Instructor only)."""
+    service = LearningCheckpointService(db)
+    await service.delete_checkpoint(
+        course_id=course_id,
+        checkpoint_id=checkpoint_id,
+        user_id=current_user.user.id,
+        is_admin=_is_admin(current_user),
+    )
+
+
+@router.post("/checkpoints/{checkpoint_id}/submit", response_model=CheckpointSubmitResponse)
+async def submit_checkpoint_answer(
+    course_id: uuid.UUID,
+    checkpoint_id: uuid.UUID,
+    payload: CheckpointSubmitRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: CurrentUser = Depends(get_current_user),
+):
+    """Submit student answer to a checkpoint and record pass status."""
+    service = LearningCheckpointService(db)
+    return await service.submit_checkpoint(
+        course_id=course_id,
+        checkpoint_id=checkpoint_id,
+        payload=payload,
+        user_id=current_user.user.id,
+        is_admin=_is_admin(current_user),
+    )

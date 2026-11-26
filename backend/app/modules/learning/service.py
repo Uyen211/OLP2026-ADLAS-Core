@@ -13,16 +13,25 @@ from app.modules.course.enums import ContextualRole
 from app.modules.course.public_api import CoursePublicService
 from app.modules.learning.enums import MaterialType
 from app.modules.learning.exceptions import (
+    CheckpointNotFoundException,
+    CheckpointSpacingException,
     InvalidMaterialFormatException,
     LearningMaterialNotFoundException,
     LearningModuleNotFoundException,
     MaterialQuotaExceededException,
     ModuleCircularDependencyException,
     ModuleLockedException,
+    UncompletedCheckpointsException,
 )
-from app.modules.learning.models import LearningMaterial, LearningModule
+from app.modules.learning.models import LearningMaterial, LearningModule, MaterialCheckpoint
 from app.modules.learning.repository import LearningRepository
 from app.modules.learning.schemas import (
+    CheckpointCreate,
+    CheckpointInstructorResponse,
+    CheckpointStudentResponse,
+    CheckpointSubmitRequest,
+    CheckpointSubmitResponse,
+    CheckpointUpdate,
     MaterialCreate,
     MaterialResponse,
     MaterialUpdate,
@@ -797,4 +806,221 @@ class LearningMaterialService:
             if is_locked:
                 raise ModuleLockedException(lock_reason or "Bài học đang tạm khóa.")
 
+            unpassed_ids = await self.repo.get_unpassed_blocking_checkpoints(material_id, user_id)
+            if unpassed_ids:
+                raise UncompletedCheckpointsException(
+                    f"Cần vượt qua {len(unpassed_ids)} mốc kiểm tra bắt buộc trước khi hoàn thành học liệu."
+                )
+
         await self.repo.mark_material_completed(user_id, material_id)
+
+
+class LearningCheckpointService:
+    """Manages interactive checkpoints on video timelines and document sections (Task T2-P-M2-03)."""
+
+    def __init__(self, db: AsyncSession, repo: Optional[LearningRepository] = None):
+        self.db = db
+        self.repo = repo or LearningRepository(db)
+        self.course_service = CoursePublicService(db)
+
+    async def _get_material_in_course(self, course_id: uuid.UUID, material_id: uuid.UUID) -> LearningMaterial:
+        mat = await self.repo.get_material(material_id)
+        if not mat:
+            raise LearningMaterialNotFoundException()
+        mod = await self.repo.get_module(mat.module_id, include_materials=False)
+        if not mod or mod.course_id != course_id:
+            raise LearningMaterialNotFoundException()
+        return mat
+
+    async def _assert_video_spacing(
+        self,
+        material_id: uuid.UUID,
+        stop_time_seconds: Optional[int],
+        exclude_checkpoint_id: Optional[uuid.UUID] = None,
+    ) -> None:
+        """Ensure video checkpoints are at least 5 seconds apart."""
+        if stop_time_seconds is None:
+            return
+        existing = await self.repo.list_checkpoints(material_id)
+        for chk in existing:
+            if exclude_checkpoint_id and chk.id == exclude_checkpoint_id:
+                continue
+            if chk.stop_time_seconds is not None and abs(chk.stop_time_seconds - stop_time_seconds) < 5:
+                raise CheckpointSpacingException()
+
+    async def list_checkpoints(
+        self,
+        course_id: uuid.UUID,
+        material_id: uuid.UUID,
+        user_id: uuid.UUID,
+        is_admin: bool = False,
+    ) -> List[CheckpointInstructorResponse] | List[CheckpointStudentResponse]:
+        """List checkpoints for a material. Instructors see answers; students see pass status."""
+        role = await self.course_service.assert_course_role(
+            course_id=course_id,
+            user_id=user_id,
+            allowed_roles=[ContextualRole.INSTRUCTOR, ContextualRole.STUDENT],
+            is_admin=is_admin,
+        )
+        await self._get_material_in_course(course_id, material_id)
+        checkpoints = await self.repo.list_checkpoints(material_id)
+
+        if role == ContextualRole.INSTRUCTOR or is_admin:
+            return [CheckpointInstructorResponse.model_validate(c) for c in checkpoints]
+
+        attempt_map = await self.repo.get_student_attempts_for_checkpoints(
+            [c.id for c in checkpoints], user_id
+        )
+        results: List[CheckpointStudentResponse] = []
+        for c in checkpoints:
+            item = CheckpointStudentResponse.model_validate(c)
+            item.is_passed = bool(attempt_map.get(c.id, False))
+            results.append(item)
+        return results
+
+    async def create_checkpoint(
+        self,
+        course_id: uuid.UUID,
+        material_id: uuid.UUID,
+        payload: CheckpointCreate,
+        user_id: uuid.UUID,
+        is_admin: bool = False,
+    ) -> CheckpointInstructorResponse:
+        """Create an interactive checkpoint on a material (Instructor only)."""
+        await self.course_service.assert_course_role(
+            course_id=course_id,
+            user_id=user_id,
+            allowed_roles=[ContextualRole.INSTRUCTOR],
+            is_admin=is_admin,
+        )
+        await self._get_material_in_course(course_id, material_id)
+        await self._assert_video_spacing(material_id, payload.stop_time_seconds)
+
+        chk = MaterialCheckpoint(
+            material_id=material_id,
+            lo_id=payload.lo_id,
+            stop_time_seconds=payload.stop_time_seconds,
+            section_index=payload.section_index,
+            question_text=payload.question_text,
+            question_type=payload.question_type,
+            options=payload.options,
+            correct_option=payload.correct_option.strip().upper(),
+            expected_concept=payload.expected_concept or payload.question_text[:200],
+            is_blocking=payload.is_blocking,
+            time_limit_seconds=payload.time_limit_seconds,
+            rewind_seconds=payload.rewind_seconds,
+        )
+        created = await self.repo.create_checkpoint(chk)
+        return CheckpointInstructorResponse.model_validate(created)
+
+    async def update_checkpoint(
+        self,
+        course_id: uuid.UUID,
+        checkpoint_id: uuid.UUID,
+        payload: CheckpointUpdate,
+        user_id: uuid.UUID,
+        is_admin: bool = False,
+    ) -> CheckpointInstructorResponse:
+        """Update an existing checkpoint (Instructor only)."""
+        await self.course_service.assert_course_role(
+            course_id=course_id,
+            user_id=user_id,
+            allowed_roles=[ContextualRole.INSTRUCTOR],
+            is_admin=is_admin,
+        )
+        chk = await self.repo.get_checkpoint(checkpoint_id)
+        if not chk:
+            raise CheckpointNotFoundException()
+        await self._get_material_in_course(course_id, chk.material_id)
+
+        fields = payload.model_fields_set
+        if "stop_time_seconds" in fields:
+            await self._assert_video_spacing(
+                chk.material_id, payload.stop_time_seconds, exclude_checkpoint_id=chk.id
+            )
+            chk.stop_time_seconds = payload.stop_time_seconds
+        if "section_index" in fields:
+            chk.section_index = payload.section_index
+        if "question_text" in fields and payload.question_text is not None:
+            chk.question_text = payload.question_text
+        if "options" in fields and payload.options is not None:
+            chk.options = payload.options
+        if "correct_option" in fields and payload.correct_option is not None:
+            chk.correct_option = payload.correct_option.strip().upper()
+        if "expected_concept" in fields:
+            chk.expected_concept = payload.expected_concept
+        if "is_blocking" in fields and payload.is_blocking is not None:
+            chk.is_blocking = payload.is_blocking
+        if "time_limit_seconds" in fields and payload.time_limit_seconds is not None:
+            chk.time_limit_seconds = payload.time_limit_seconds
+        if "rewind_seconds" in fields and payload.rewind_seconds is not None:
+            chk.rewind_seconds = payload.rewind_seconds
+        if "lo_id" in fields:
+            chk.lo_id = payload.lo_id
+
+        updated = await self.repo.update_checkpoint(chk)
+        return CheckpointInstructorResponse.model_validate(updated)
+
+    async def delete_checkpoint(
+        self,
+        course_id: uuid.UUID,
+        checkpoint_id: uuid.UUID,
+        user_id: uuid.UUID,
+        is_admin: bool = False,
+    ) -> None:
+        """Delete a checkpoint (Instructor only)."""
+        await self.course_service.assert_course_role(
+            course_id=course_id,
+            user_id=user_id,
+            allowed_roles=[ContextualRole.INSTRUCTOR],
+            is_admin=is_admin,
+        )
+        chk = await self.repo.get_checkpoint(checkpoint_id)
+        if not chk:
+            raise CheckpointNotFoundException()
+        await self._get_material_in_course(course_id, chk.material_id)
+        await self.repo.delete_checkpoint(chk)
+
+    async def submit_checkpoint(
+        self,
+        course_id: uuid.UUID,
+        checkpoint_id: uuid.UUID,
+        payload: CheckpointSubmitRequest,
+        user_id: uuid.UUID,
+        is_admin: bool = False,
+    ) -> CheckpointSubmitResponse:
+        """Evaluate student answer to a checkpoint and record pass status."""
+        await self.course_service.assert_course_role(
+            course_id=course_id,
+            user_id=user_id,
+            allowed_roles=[ContextualRole.INSTRUCTOR, ContextualRole.STUDENT],
+            is_admin=is_admin,
+        )
+        chk = await self.repo.get_checkpoint(checkpoint_id)
+        if not chk:
+            raise CheckpointNotFoundException()
+        await self._get_material_in_course(course_id, chk.material_id)
+
+        selected = payload.selected_option.strip().upper()
+        expected = (chk.correct_option or "").strip().upper()
+        is_correct = bool(expected and selected == expected)
+
+        attempt = await self.repo.upsert_checkpoint_attempt(
+            user_id=user_id,
+            checkpoint_id=chk.id,
+            selected_option=selected,
+            is_correct=is_correct,
+        )
+
+        if is_correct:
+            msg = "Chính xác! Bạn đã vượt qua mốc kiểm tra này."
+        else:
+            msg = f"Chưa chính xác! Hệ thống sẽ lùi lại {chk.rewind_seconds} giây để bạn ôn lại kiến thức."
+
+        return CheckpointSubmitResponse(
+            checkpoint_id=chk.id,
+            is_correct=is_correct,
+            is_passed=attempt.is_correct,
+            rewind_seconds=0 if is_correct else chk.rewind_seconds,
+            message=msg,
+        )
