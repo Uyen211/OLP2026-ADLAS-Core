@@ -228,9 +228,18 @@ export const MaterialFormModal: React.FC<MaterialFormModalProps> = ({
             helperText="Kéo thả hoặc chọn tệp PDF, PPTX, MP4, DOCX hoặc Markdown"
           />
           {fileUrl && !selectedFile && (
-            <p className="mt-1 text-xs text-mm-text-muted truncate">
-              Đường dẫn hiện tại: <span className="font-mono">{fileUrl}</span>
-            </p>
+            <div className="mt-1.5 flex items-center justify-between gap-2 rounded bg-mm-surface-alt/60 px-2.5 py-1 text-xs">
+              <span className="truncate text-mm-text-muted">
+                Đường dẫn hiện tại: <span className="font-mono text-mm-text-primary">{fileUrl}</span>
+              </span>
+              <button
+                type="button"
+                onClick={() => setFileUrl("")}
+                className="shrink-0 font-medium text-mm-error hover:underline"
+              >
+                Gỡ bỏ tệp
+              </button>
+            </div>
           )}
         </FormField>
 

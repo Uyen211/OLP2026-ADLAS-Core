@@ -136,4 +136,11 @@ export const learningService = {
   ): Promise<{ blob: Blob; contentType: string }> {
     return httpFetchBlob(`/courses/${courseId}/learning/materials/${materialId}/preview`);
   },
+
+  completeMaterial(courseId: string, materialId: string): Promise<{ status: string; material_id: string }> {
+    return httpRequest<{ status: string; material_id: string }>(
+      `/courses/${courseId}/learning/materials/${materialId}/complete`,
+      { method: "POST" }
+    );
+  },
 };

@@ -122,10 +122,11 @@ export const CourseMaterialsTab: React.FC<CourseMaterialsTabProps> = ({
 
     setModules(newList);
     try {
-      await learningService.reorderModules(
+      const reordered = await learningService.reorderModules(
         courseId,
         newList.map((m) => m.id)
       );
+      setModules(reordered);
       showToast("success", "Đã cập nhật thứ tự bài học.");
     } catch (err) {
       showToast("error", err instanceof ApiError ? err.message : "Lỗi khi sắp xếp bài học.");
@@ -658,7 +659,12 @@ export const CourseMaterialsTab: React.FC<CourseMaterialsTabProps> = ({
         courseId={courseId}
         material={viewingMaterial}
         matchingLo={availableLos.find((lo) => lo.id === viewingMaterial?.lo_id)}
-        onClose={() => setViewingMaterial(null)}
+        onClose={() => {
+          setViewingMaterial(null);
+          if (!canEdit) {
+            loadModules();
+          }
+        }}
         onDownload={handleDownloadMaterial}
       />
     </div>

@@ -22,6 +22,13 @@ export interface ModuleFormModalProps {
   onSaved: (mod: LearningModule) => void;
 }
 
+function toLocalDateTimeInput(isoStr: string): string {
+  const date = new Date(isoStr);
+  if (Number.isNaN(date.getTime())) return "";
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+}
+
 export const ModuleFormModal: React.FC<ModuleFormModalProps> = ({
   open,
   courseId,
@@ -44,7 +51,7 @@ export const ModuleFormModal: React.FC<ModuleFormModalProps> = ({
       setTitle(editingModule.title);
       setUnlockAt(
         editingModule.unlock_at
-          ? new Date(editingModule.unlock_at).toISOString().slice(0, 16)
+          ? toLocalDateTimeInput(editingModule.unlock_at)
           : ""
       );
       setPrerequisiteModuleId(editingModule.prerequisite_module_id ?? "");

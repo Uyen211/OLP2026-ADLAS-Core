@@ -80,6 +80,9 @@ export const MaterialViewerModal: React.FC<MaterialViewerModalProps> = ({
       return;
     }
 
+    // Record completion progress in background (unlocks prerequisite modules for students)
+    learningService.completeMaterial(courseId, material.id).catch(() => {});
+
     if (isExternalUrl) {
       setLoading(false);
       setError(null);
