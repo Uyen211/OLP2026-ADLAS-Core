@@ -4,12 +4,13 @@
  */
 
 import React, { useCallback, useEffect, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate, useParams } from "react-router-dom";
 import {
   AlertTriangle,
   Bot,
   CheckCircle2,
   Clock,
+  ExternalLink,
   FileText,
   GitBranch,
   GraduationCap,
@@ -42,6 +43,8 @@ const countWords = (text: string): number => {
 export const InstructorReviewPanel: React.FC<InstructorReviewPanelProps> = ({
   assignmentId,
 }) => {
+  const navigate = useNavigate();
+  const { courseId } = useParams<{ courseId?: string }>();
   const [submissions, setSubmissions] = useState<SubmissionReviewSummaryItem[]>([]);
   const [loadingList, setLoadingList] = useState<boolean>(true);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -458,8 +461,24 @@ export const InstructorReviewPanel: React.FC<InstructorReviewPanelProps> = ({
                 </p>
               )}
 
-              <div className="rounded-xl border border-[#dbeafe] bg-[#eff6ff]/70 p-3.5 text-xs text-[#1e3a8a] leading-relaxed">
-                <strong>Quy tắc chấm điểm (Human-in-the-Loop BR-07):</strong> Bản tóm tắt AI, biên bản hỏi-đáp Viva, khai báo AI và nhật ký vi phạm ở trên là bộ hồ sơ bằng chứng đầu vào cho <strong>Rubric & SpeedGrader (Module Gradebook)</strong>. AI chỉ đề xuất điểm tham khảo ở trạng thái <code>AI_PROPOSED</code> kèm trích dẫn và cảnh báo mâu thuẫn (<code>CONFLICTING</code>); <strong>Giảng viên là người đọc lại đối chiếu và chốt điểm chính thức</strong>.
+              <div className="rounded-xl border border-[#dbeafe] bg-[#eff6ff]/70 p-3.5 text-xs text-[#1e3a8a] leading-relaxed flex flex-wrap items-center justify-between gap-3">
+                <div className="flex-1 min-w-[240px]">
+                  <strong>Quy tắc chấm điểm (Human-in-the-Loop BR-07):</strong> Bản tóm tắt AI, biên bản hỏi-đáp Viva, khai báo AI và nhật ký vi phạm ở trên là bộ hồ sơ bằng chứng đầu vào cho <strong>Rubric & SpeedGrader (Module Gradebook)</strong>. AI chỉ đề xuất điểm tham khảo ở trạng thái <code>AI_PROPOSED</code> kèm trích dẫn và cảnh báo mâu thuẫn (<code>CONFLICTING</code>); <strong>Giảng viên là người đọc lại đối chiếu và chốt điểm chính thức</strong>.
+                </div>
+                {courseId && (
+                  <MmButton
+                    variant="primary"
+                    size="sm"
+                    onClick={() =>
+                      navigate(
+                        `/courses/${courseId}/assignments/${assignmentId}/speedgrader?submissionId=${reviewDetail.submission_id}`
+                      )
+                    }
+                  >
+                    <ExternalLink className="h-3.5 w-3.5 mr-1.5" />
+                    Mở SpeedGrader 3 Cột
+                  </MmButton>
+                )}
               </div>
             </div>
           </>
