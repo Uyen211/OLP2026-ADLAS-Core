@@ -642,20 +642,37 @@ class LearningMaterialService:
             max_bytes = quotas.max_slide_mb * 1024 * 1024
             quota_label = f"{quotas.max_slide_mb}MB"
 
-        upload_dir = "/app/uploads/materials"
+        base_upload_dir = os.getenv("UPLOAD_DIR")
+        if not base_upload_dir:
+            if os.path.exists("/app"):
+                base_upload_dir = "/app/uploads"
+            else:
+                base_upload_dir = os.path.join(os.path.expanduser("~"), ".adlas", "uploads")
+        upload_dir = os.path.join(base_upload_dir, "materials")
         os.makedirs(upload_dir, exist_ok=True)
         safe_filename = f"{uuid.uuid4()}-{filename}"
         local_path = os.path.join(upload_dir, safe_filename)
 
         total_written = 0
-        with open(local_path, "wb") as buffer:
-            while chunk := await file.read(1024 * 1024):
-                total_written += len(chunk)
-                if total_written > max_bytes:
-                    raise MaterialQuotaExceededException(
-                        f"Tệp học liệu '{filename}' ({round(total_written / (1024 * 1024), 2)}MB) vượt quá hạn ngạch tối đa {quota_label} (Quy tắc BR-STORAGE-02)."
-                    )
-                buffer.write(chunk)
+        try:
+            with open(local_path, "wb") as buffer:
+                while chunk := await file.read(1024 * 1024):
+                    total_written += len(chunk)
+                    if total_written > max_bytes:
+                        buffer.close()
+                        if os.path.exists(local_path):
+                            os.remove(local_path)
+                        raise MaterialQuotaExceededException(
+                            f"Tệp học liệu '{filename}' ({round(total_written / (1024 * 1024), 2)}MB) vượt quá hạn ngạch tối đa {quota_label} (Quy tắc BR-STORAGE-02)."
+                        )
+                    buffer.write(chunk)
+        except Exception:
+            if os.path.exists(local_path):
+                try:
+                    os.remove(local_path)
+                except OSError:
+                    pass
+            raise
 
         return MaterialUploadResponse(
             file_url=local_path,
