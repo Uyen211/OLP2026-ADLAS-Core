@@ -249,6 +249,29 @@ export async function httpRequest<T>(
   return (await response.text()) as unknown as T;
 }
 
+export async function httpFetchBlob(
+  path: string
+): Promise<{ blob: Blob; contentType: string }> {
+  const url = path.startsWith("http")
+    ? path
+    : `${API_BASE_URL}${path.startsWith("/") ? path : `/${path}`}`;
+
+  const headers: Record<string, string> = {};
+  const token = sessionBridge?.getAccessToken();
+  if (token) {
+    headers.Authorization = `Bearer ${token}`;
+  }
+
+  const response = await fetch(url, { method: "GET", headers });
+  if (!response.ok) {
+    throw await parseErrorResponse(response);
+  }
+
+  const blob = await response.blob();
+  const contentType = response.headers.get("content-type") || blob.type || "application/octet-stream";
+  return { blob, contentType };
+}
+
 export async function httpDownloadBlob(path: string, filename: string): Promise<void> {
   const url = path.startsWith("http")
     ? path

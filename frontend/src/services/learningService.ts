@@ -12,7 +12,7 @@ import type {
   ModuleCreatePayload,
   ModuleUpdatePayload,
 } from "../types/learning";
-import { httpDownloadBlob, httpRequest } from "./httpClient";
+import { httpDownloadBlob, httpFetchBlob, httpRequest } from "./httpClient";
 
 export const learningService = {
   listModules(courseId: string): Promise<LearningModule[]> {
@@ -128,5 +128,12 @@ export const learningService = {
       `/courses/${courseId}/learning/materials/${materialId}/download`,
       filename
     );
+  },
+
+  fetchMaterialPreviewBlob(
+    courseId: string,
+    materialId: string
+  ): Promise<{ blob: Blob; contentType: string }> {
+    return httpFetchBlob(`/courses/${courseId}/learning/materials/${materialId}/preview`);
   },
 };

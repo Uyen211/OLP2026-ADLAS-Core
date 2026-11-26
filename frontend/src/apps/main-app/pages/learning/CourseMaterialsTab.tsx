@@ -32,6 +32,7 @@ import { MmButton } from "../../components/MmButton";
 import { MmCard } from "../../components/MmCard";
 import { showToast } from "../../components/Toast";
 import { MaterialFormModal } from "./MaterialFormModal";
+import { MaterialViewerModal } from "./MaterialViewerModal";
 import { ModuleFormModal } from "./ModuleFormModal";
 
 const MATERIAL_ICON: Record<MaterialType, React.ReactNode> = {
@@ -75,6 +76,7 @@ export const CourseMaterialsTab: React.FC<CourseMaterialsTabProps> = ({
   const [materialModalOpen, setMaterialModalOpen] = useState(false);
   const [targetModuleId, setTargetModuleId] = useState<string>("");
   const [editingMaterial, setEditingMaterial] = useState<LearningMaterial | null>(null);
+  const [viewingMaterial, setViewingMaterial] = useState<LearningMaterial | null>(null);
 
   // Deletion confirm modals
   const [deletingModule, setDeletingModule] = useState<LearningModule | null>(null);
@@ -486,9 +488,15 @@ export const CourseMaterialsTab: React.FC<CourseMaterialsTabProps> = ({
 
                                 <div>
                                   <div className="flex items-center gap-2 flex-wrap">
-                                    <h4 className="font-mm-mid text-sm font-medium text-mm-heading">
+                                    <button
+                                      type="button"
+                                      onClick={() => mat.file_url && setViewingMaterial(mat)}
+                                      className={`text-left font-mm-mid text-sm font-medium text-mm-heading ${
+                                        mat.file_url ? "hover:text-mm-brand hover:underline cursor-pointer" : "cursor-default"
+                                      }`}
+                                    >
                                       {mat.title}
-                                    </h4>
+                                    </button>
 
                                     {mat.is_mandatory && (
                                       <span className="rounded bg-rose-500/10 px-2 py-0.5 text-[11px] font-semibold text-rose-600 border border-rose-500/20">
@@ -526,14 +534,24 @@ export const CourseMaterialsTab: React.FC<CourseMaterialsTabProps> = ({
                               {/* Material Actions */}
                               <div className="flex items-center gap-1">
                                 {mat.file_url && (
-                                  <MmButton
-                                    variant="secondary"
-                                    size="sm"
-                                    onClick={() => handleDownloadMaterial(mat)}
-                                  >
-                                    <Download className="h-3.5 w-3.5" />
-                                    <span>Tải về</span>
-                                  </MmButton>
+                                  <>
+                                    <MmButton
+                                      variant="primary"
+                                      size="sm"
+                                      onClick={() => setViewingMaterial(mat)}
+                                    >
+                                      <Eye className="h-3.5 w-3.5" />
+                                      <span>Xem</span>
+                                    </MmButton>
+                                    <MmButton
+                                      variant="secondary"
+                                      size="sm"
+                                      onClick={() => handleDownloadMaterial(mat)}
+                                    >
+                                      <Download className="h-3.5 w-3.5" />
+                                      <span>Tải về</span>
+                                    </MmButton>
+                                  </>
                                 )}
 
                                 {canEdit && (
@@ -633,6 +651,15 @@ export const CourseMaterialsTab: React.FC<CourseMaterialsTabProps> = ({
         loading={actionLoading}
         onCancel={() => setDeletingMaterial(null)}
         onConfirm={handleDeleteMaterial}
+      />
+
+      <MaterialViewerModal
+        open={Boolean(viewingMaterial)}
+        courseId={courseId}
+        material={viewingMaterial}
+        matchingLo={availableLos.find((lo) => lo.id === viewingMaterial?.lo_id)}
+        onClose={() => setViewingMaterial(null)}
+        onDownload={handleDownloadMaterial}
       />
     </div>
   );
