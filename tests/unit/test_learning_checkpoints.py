@@ -280,3 +280,96 @@ async def test_complete_material_succeeds_after_all_checkpoints_passed(mock_db, 
 
     await service.complete_material(ids["course_id"], ids["material_id"], ids["student_id"])
     repo.mark_material_completed.assert_awaited_once_with(ids["student_id"], ids["material_id"])
+
+
+@pytest.mark.asyncio
+async def test_structured_content_extracts_markdown_sections(mock_db, ids, tmp_path, monkeypatch):
+    """Structured content extracts heading-delimited sections from Markdown files."""
+    md_file = tmp_path / "guide.md"
+    md_file.write_text("# Sec 1\nLine A\n## Sec 2\nLine B\n", encoding="utf-8")
+
+    repo = MagicMock(spec=LearningRepository)
+    mod = LearningModule(
+        id=ids["module_id"],
+        course_id=ids["course_id"],
+        title="Week 1",
+        is_published=True,
+        unlock_at=None,
+        prerequisite_module_id=None,
+    )
+    mat = LearningMaterial(
+        id=ids["material_id"],
+        module_id=ids["module_id"],
+        title="Guide",
+        material_type=MaterialType.DOCUMENT.value,
+        file_url=str(md_file),
+        is_published=True,
+    )
+    repo.get_material = AsyncMock(return_value=mat)
+    repo.get_module = AsyncMock(return_value=mod)
+    repo.mark_material_completed = AsyncMock()
+
+    service = LearningMaterialService(mock_db, repo=repo)
+    service.course_service = _mock_course_service(ContextualRole.STUDENT)
+
+    res = await service.get_material_structured_content(
+        ids["course_id"], ids["material_id"], ids["student_id"]
+    )
+    assert res["content_kind"] == "DOC_SECTIONS"
+    assert res["total_items"] == 2
+    assert res["items"][0]["title"] == "Sec 1"
+    assert res["items"][1]["title"] == "Sec 2"
+    repo.mark_material_completed.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_structured_content_extracts_pdf_pages_and_caches_png(mock_db, ids, tmp_path, monkeypatch):
+    """Structured content renders PDF pages to PNG cache and returns page image URLs."""
+    import fitz
+
+    pdf_file = tmp_path / "sample.pdf"
+    doc = fitz.open()
+    p1 = doc.new_page()
+    p1.insert_text((72, 72), "Page One Heading")
+    p2 = doc.new_page()
+    p2.insert_text((72, 72), "Page Two Heading")
+    doc.save(str(pdf_file))
+    doc.close()
+
+    monkeypatch.setenv("UPLOAD_DIR", str(tmp_path / "uploads"))
+
+    repo = MagicMock(spec=LearningRepository)
+    mod = LearningModule(
+        id=ids["module_id"],
+        course_id=ids["course_id"],
+        title="Week 1",
+        is_published=True,
+        unlock_at=None,
+        prerequisite_module_id=None,
+    )
+    mat = LearningMaterial(
+        id=ids["material_id"],
+        module_id=ids["module_id"],
+        title="Sample PDF",
+        material_type=MaterialType.PDF.value,
+        file_url=str(pdf_file),
+        is_published=True,
+    )
+    repo.get_material = AsyncMock(return_value=mat)
+    repo.get_module = AsyncMock(return_value=mod)
+
+    service = LearningMaterialService(mock_db, repo=repo)
+    service.course_service = _mock_course_service(ContextualRole.INSTRUCTOR)
+
+    res = await service.get_material_structured_content(
+        ids["course_id"], ids["material_id"], ids["instructor_id"]
+    )
+    assert res["content_kind"] == "PDF_PAGES"
+    assert res["total_items"] == 2
+    assert res["items"][0]["index"] == 1
+    assert "/pages/1/image" in res["items"][0]["image_url"]
+
+    img_path = await service.get_pdf_page_image_path(
+        ids["course_id"], ids["material_id"], 2, ids["instructor_id"]
+    )
+    assert img_path.endswith("page_2.png")

@@ -208,3 +208,21 @@ class CheckpointSubmitResponse(BaseModel):
     is_passed: bool
     rewind_seconds: int
     message: str
+
+
+class MaterialPageItem(BaseModel):
+    """Single page, slide, or document section extracted for interactive studio/reader."""
+
+    index: int = Field(..., ge=1)
+    title: str
+    content_lines: List[str] = Field(default_factory=list)
+    image_url: Optional[str] = None
+
+
+class MaterialStructuredContentResponse(BaseModel):
+    """Structured paginated/sectioned representation of a PDF, Slide deck, or Document."""
+
+    material_id: uuid.UUID
+    content_kind: str  # PDF_PAGES | SLIDE_DECK | DOC_SECTIONS | UNSUPPORTED
+    total_items: int
+    items: List[MaterialPageItem]

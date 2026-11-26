@@ -726,6 +726,7 @@ class LearningMaterialService:
         material_id: uuid.UUID,
         user_id: uuid.UUID,
         is_admin: bool = False,
+        mark_completed: bool = True,
     ) -> str:
         """Validate permissions and return local file path for download/preview."""
         role = await self.course_service.assert_course_role(
@@ -763,10 +764,213 @@ class LearningMaterialService:
         if not resolved_path or not os.path.exists(resolved_path):
             raise LearningMaterialNotFoundException("Tệp học liệu vật lý không tồn tại trên máy chủ lưu trữ.")
 
-        if is_student:
+        if is_student and mark_completed:
             await self.repo.mark_material_completed(user_id, material_id)
 
         return resolved_path
+
+    def _pdf_cache_dir(self, material_id: uuid.UUID) -> str:
+        cache_dir = os.path.join(self._resolve_base_upload_dir(), ".preview_cache", str(material_id))
+        os.makedirs(cache_dir, exist_ok=True)
+        return cache_dir
+
+    def _extract_pdf_pages(self, file_path: str, course_id: uuid.UUID, material_id: uuid.UUID) -> list[dict]:
+        import fitz
+
+        doc = fitz.open(file_path)
+        cache_dir = self._pdf_cache_dir(material_id)
+        items: list[dict] = []
+        try:
+            for idx, page in enumerate(doc, start=1):
+                img_path = os.path.join(cache_dir, f"page_{idx}.png")
+                if not os.path.exists(img_path) or os.path.getmtime(file_path) > os.path.getmtime(img_path):
+                    pix = page.get_pixmap(dpi=130)
+                    pix.save(img_path)
+                raw_lines = [ln.strip() for ln in page.get_text("text").splitlines() if ln.strip()]
+                title = raw_lines[0][:90] if raw_lines else f"Trang {idx}"
+                items.append(
+                    {
+                        "index": idx,
+                        "title": title,
+                        "content_lines": raw_lines[:6],
+                        "image_url": f"/courses/{course_id}/learning/materials/{material_id}/pages/{idx}/image",
+                    }
+                )
+        finally:
+            doc.close()
+        return items
+
+    def _extract_pptx_slides(self, file_path: str) -> list[dict]:
+        from pptx import Presentation
+
+        prs = Presentation(file_path)
+        items: list[dict] = []
+        for idx, slide in enumerate(prs.slides, start=1):
+            title_text = ""
+            if slide.shapes.title and slide.shapes.title.text:
+                title_text = slide.shapes.title.text.strip()
+            lines: list[str] = []
+            for shape in slide.shapes:
+                if not shape.has_text_frame:
+                    continue
+                if slide.shapes.title and shape == slide.shapes.title:
+                    continue
+                for para in shape.text_frame.paragraphs:
+                    txt = para.text.strip()
+                    if txt:
+                        lines.append(txt)
+            items.append(
+                {
+                    "index": idx,
+                    "title": title_text or f"Slide {idx}",
+                    "content_lines": lines,
+                    "image_url": None,
+                }
+            )
+        return items
+
+    def _extract_docx_sections(self, file_path: str) -> list[dict]:
+        from docx import Document
+
+        doc = Document(file_path)
+        sections: list[dict] = []
+        current_title = "Nội dung tài liệu"
+        current_lines: list[str] = []
+
+        for para in doc.paragraphs:
+            txt = para.text.strip()
+            if not txt:
+                continue
+            style_name = (para.style.name or "").lower() if para.style else ""
+            if "heading" in style_name:
+                if current_lines:
+                    sections.append(
+                        {
+                            "index": len(sections) + 1,
+                            "title": current_title,
+                            "content_lines": current_lines,
+                            "image_url": None,
+                        }
+                    )
+                    current_lines = []
+                current_title = txt
+            else:
+                current_lines.append(txt)
+
+        if current_lines or not sections:
+            sections.append(
+                {
+                    "index": len(sections) + 1,
+                    "title": current_title,
+                    "content_lines": current_lines or ["(Tài liệu chưa có nội dung văn bản)"],
+                    "image_url": None,
+                }
+            )
+        return sections
+
+    def _extract_markdown_sections(self, file_path: str) -> list[dict]:
+        with open(file_path, "r", encoding="utf-8", errors="replace") as f:
+            raw = f.read()
+
+        sections: list[dict] = []
+        current_title = "Giới thiệu"
+        current_lines: list[str] = []
+
+        for line in raw.splitlines():
+            stripped = line.strip()
+            if stripped.startswith("#"):
+                heading_text = stripped.lstrip("#").strip()
+                if current_lines:
+                    sections.append(
+                        {
+                            "index": len(sections) + 1,
+                            "title": current_title,
+                            "content_lines": current_lines,
+                            "image_url": None,
+                        }
+                    )
+                    current_lines = []
+                current_title = heading_text or current_title
+            elif stripped:
+                current_lines.append(stripped)
+
+        if current_lines or not sections:
+            sections.append(
+                {
+                    "index": len(sections) + 1,
+                    "title": current_title,
+                    "content_lines": current_lines or ["(Tài liệu trống)"],
+                    "image_url": None,
+                }
+            )
+        return sections
+
+    async def get_material_structured_content(
+        self,
+        course_id: uuid.UUID,
+        material_id: uuid.UUID,
+        user_id: uuid.UUID,
+        is_admin: bool = False,
+    ) -> dict:
+        """Extract paginated/sectioned structure for PDF, PPTX, DOCX, and Markdown materials."""
+        file_path = await self.get_material_file_path(
+            course_id=course_id,
+            material_id=material_id,
+            user_id=user_id,
+            is_admin=is_admin,
+            mark_completed=False,
+        )
+        ext = os.path.splitext(file_path)[1].lower()
+
+        if ext == ".pdf":
+            items = self._extract_pdf_pages(file_path, course_id, material_id)
+            kind = "PDF_PAGES"
+        elif ext in (".pptx", ".ppt"):
+            items = self._extract_pptx_slides(file_path)
+            kind = "SLIDE_DECK"
+        elif ext in (".docx", ".doc"):
+            items = self._extract_docx_sections(file_path)
+            kind = "DOC_SECTIONS"
+        elif ext in (".md", ".txt"):
+            items = self._extract_markdown_sections(file_path)
+            kind = "DOC_SECTIONS"
+        else:
+            items = []
+            kind = "UNSUPPORTED"
+
+        return {
+            "material_id": material_id,
+            "content_kind": kind,
+            "total_items": len(items),
+            "items": items,
+        }
+
+    async def get_pdf_page_image_path(
+        self,
+        course_id: uuid.UUID,
+        material_id: uuid.UUID,
+        page_index: int,
+        user_id: uuid.UUID,
+        is_admin: bool = False,
+    ) -> str:
+        """Return rendered PNG file path for a specific 1-based PDF page."""
+        file_path = await self.get_material_file_path(
+            course_id=course_id,
+            material_id=material_id,
+            user_id=user_id,
+            is_admin=is_admin,
+            mark_completed=False,
+        )
+        if os.path.splitext(file_path)[1].lower() != ".pdf":
+            raise LearningMaterialNotFoundException("Học liệu không phải định dạng PDF.")
+
+        cache_dir = self._pdf_cache_dir(material_id)
+        img_path = os.path.join(cache_dir, f"page_{page_index}.png")
+        if not os.path.exists(img_path):
+            self._extract_pdf_pages(file_path, course_id, material_id)
+        if not os.path.exists(img_path):
+            raise LearningMaterialNotFoundException(f"Không tìm thấy trang {page_index}.")
+        return img_path
 
     async def complete_material(
         self,

@@ -21,6 +21,7 @@ from app.modules.learning.schemas import (
     CheckpointUpdate,
     MaterialCreate,
     MaterialResponse,
+    MaterialStructuredContentResponse,
     MaterialUpdate,
     MaterialUploadResponse,
     ModuleCreate,
@@ -293,6 +294,46 @@ async def preview_material_file(
         media_type=media_type,
         headers={"Content-Disposition": f'inline; filename="{filename}"'},
     )
+
+
+@router.get(
+    "/materials/{material_id}/structured-content",
+    response_model=MaterialStructuredContentResponse,
+)
+async def get_material_structured_content(
+    course_id: uuid.UUID,
+    material_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: CurrentUser = Depends(get_current_user),
+):
+    """Extract paginated/sectioned structure for PDF, PowerPoint, and Document materials."""
+    service = LearningMaterialService(db)
+    return await service.get_material_structured_content(
+        course_id=course_id,
+        material_id=material_id,
+        user_id=current_user.user.id,
+        is_admin=_is_admin(current_user),
+    )
+
+
+@router.get("/materials/{material_id}/pages/{page_index}/image")
+async def get_pdf_page_image(
+    course_id: uuid.UUID,
+    material_id: uuid.UUID,
+    page_index: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: CurrentUser = Depends(get_current_user),
+):
+    """Serve rendered PNG image for a single PDF page (enforces access guards)."""
+    service = LearningMaterialService(db)
+    img_path = await service.get_pdf_page_image_path(
+        course_id=course_id,
+        material_id=material_id,
+        page_index=page_index,
+        user_id=current_user.user.id,
+        is_admin=_is_admin(current_user),
+    )
+    return FileResponse(path=img_path, media_type="image/png")
 
 
 @router.put("/materials/{material_id}", response_model=MaterialResponse)
