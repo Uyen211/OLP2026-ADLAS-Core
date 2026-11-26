@@ -43,7 +43,8 @@ async def list_course_assignments(
     return await submission_service.list_course_assignments(
         db=db,
         course_id=course_id,
-        user_id=current_user.user.id
+        user_id=current_user.user.id,
+        system_role=current_user.user.system_role,
     )
 
 

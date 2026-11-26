@@ -176,3 +176,21 @@ class IntegrityPledgeNotSignedException(ADLASException):
             detail="You must confirm the academic integrity pledge before continuing.",
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY
         )
+
+
+class AssignmentHasSubmissionsException(ADLASException):
+    def __init__(self, submission_count: int = 0):
+        super().__init__(
+            code="E-ASN-04",
+            detail=f"Assignment cannot be deleted because it already has {submission_count} submission(s).",
+            status_code=status.HTTP_409_CONFLICT
+        )
+
+
+class InvalidRubricLearningObjectiveException(ADLASException):
+    def __init__(self, lo_id: str):
+        super().__init__(
+            code="E-RUB-03",
+            detail=f"Learning Objective '{lo_id}' does not belong to this course.",
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY
+        )

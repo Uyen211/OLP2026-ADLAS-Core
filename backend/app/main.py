@@ -4,6 +4,9 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.core.config import settings
+from app.modules.analytics.reporting.router import router as reporting_router
+from app.modules.assessment import public_api as _assessment_public_api  # noqa: F401 - registers LO checker
+from app.modules.assessment.authoring_router import router as assessment_authoring_router
 from app.modules.assessment.router import router as assessment_router
 from app.modules.course.router import router as course_router
 from app.modules.examination.router import router as examination_router
@@ -35,6 +38,8 @@ app.add_middleware(
 app.include_router(identity_router)
 app.include_router(course_router)
 app.include_router(assessment_router)
+app.include_router(assessment_authoring_router)
+app.include_router(reporting_router)
 app.include_router(examination_router)
 app.include_router(system_router)
 app.include_router(gateway_router)
