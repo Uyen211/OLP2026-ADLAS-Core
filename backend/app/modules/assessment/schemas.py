@@ -87,6 +87,14 @@ class AssignmentDetailResponse(BaseModel):
     viva_question_count: int
     ai_policy_level: str = "YELLOW"
     my_role: Optional[str] = None
+    is_published: bool = True
+    available_from: Optional[datetime] = None
+    max_points: float = 10.0
+    is_group_assignment: bool = False
+    is_transfer_task: bool = False
+    max_attempts: Optional[int] = None
+    has_rubric: bool = False
+    rubric_is_frozen: bool = False
     submissions: List[SubmissionResponse] = Field(default_factory=list)
 
     model_config = ConfigDict(from_attributes=True)
@@ -104,6 +112,12 @@ class AssignmentSummaryItem(BaseModel):
     is_viva_required: bool
     viva_question_count: int
     ai_policy_level: str = "YELLOW"
+    is_published: bool = True
+    available_from: Optional[datetime] = None
+    max_points: float = 10.0
+    max_attempts: Optional[int] = None
+    has_rubric: bool = False
+    rubric_is_frozen: bool = False
     submission_count: int = 0
     latest_status: Optional[str] = None
 

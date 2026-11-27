@@ -11,11 +11,13 @@ import {
   ArrowRight,
   Bot,
   CheckCircle2,
+  ClipboardList,
   Download,
   FileCheck2,
   FileText,
   GitBranch,
   History,
+  Lock,
   ShieldCheck,
   Sparkles,
   UploadCloud,
@@ -23,15 +25,27 @@ import {
 import { clsx } from "clsx";
 
 import { assessmentService } from "../../../../services/assessmentService";
+import { courseService } from "../../../../services/courseService";
 import { useCourseContextStore } from "../../../../stores/courseContextStore";
-import type { AssignmentDetail, Submission } from "../../../../types/assessment";
+import type {
+  AssignmentDetail,
+  PledgeStatusResponse,
+  RubricResponse,
+  Submission,
+} from "../../../../types/assessment";
+import type { LOResponse } from "../../../../types/course";
 import { MmButton } from "../../components/MmButton";
 import { MmModal } from "../../components/MmModal";
 import { MarkdownRenderer } from "../../components/MarkdownRenderer";
 import { PillTabs } from "../../components/PillTabs";
 import { toast } from "../../components/Toast";
 import { resolveErrorMessage } from "../../constants/errorMessages";
+import {
+  AcademicIntegrityModal,
+  type SignedPledgeResult,
+} from "./AcademicIntegrityModal";
 import { InstructorReviewPanel } from "./InstructorReviewPanel";
+import { RubricPreviewCard } from "./RubricPreviewCard";
 
 const AI_TOOL_OPTIONS = [
   { id: "chatgpt", label: "ChatGPT (OpenAI)" },
@@ -66,6 +80,13 @@ export const AssignmentDetailPage: React.FC = () => {
   const [instructorViewMode, setInstructorViewMode] = useState<"review" | "preview">("review");
   const activeCourseRole = useCourseContextStore((s) => s.activeRole);
 
+  // Rubric & Academic Integrity Pledge state (T2-P-M3-02, T2-P-M3-03)
+  const [rubric, setRubric] = useState<RubricResponse | null>(null);
+  const [rubricLoading, setRubricLoading] = useState<boolean>(false);
+  const [learningObjectives, setLearningObjectives] = useState<LOResponse[]>([]);
+  const [pledgeStatus, setPledgeStatus] = useState<PledgeStatusResponse | null>(null);
+  const [pledgeModalOpen, setPledgeModalOpen] = useState<boolean>(false);
+
   // Validation Errors
   const [formErrors, setFormErrors] = useState<Record<string, string>>({});
 
@@ -73,14 +94,34 @@ export const AssignmentDetailPage: React.FC = () => {
     if (!assignmentId) return;
     try {
       setLoading(true);
+      setRubricLoading(true);
       const data = await assessmentService.getAssignmentDetail(assignmentId);
       setAssignment(data);
+
+      const resolvedCourseId = courseId || data.course_id;
+      const [rubricData, pledgeData, losData] = await Promise.all([
+        assessmentService.getRubric(assignmentId).catch(() => null),
+        assessmentService.getIntegrityPledge(assignmentId).catch(() => null),
+        resolvedCourseId
+          ? courseService.listLearningObjectives(resolvedCourseId).catch(() => [] as LOResponse[])
+          : Promise.resolve([] as LOResponse[]),
+      ]);
+      setRubric(rubricData);
+      setPledgeStatus(pledgeData);
+      setLearningObjectives(losData);
+      if (pledgeData?.signed) {
+        setIsPledgeSigned(true);
+        if (typeof pledgeData.self_contribution_pct === "number") {
+          setSelfContributionPct(pledgeData.self_contribution_pct);
+        }
+      }
     } catch (err: any) {
       toast.error(resolveErrorMessage(err?.code, "Không thể tải thông tin bài tập."));
     } finally {
       setLoading(false);
+      setRubricLoading(false);
     }
-  }, [assignmentId]);
+  }, [assignmentId, courseId]);
 
   useEffect(() => {
     fetchAssignment();
@@ -267,6 +308,31 @@ export const AssignmentDetailPage: React.FC = () => {
 
   const isInstructor =
     assignment.my_role === "INSTRUCTOR" || activeCourseRole === "INSTRUCTOR";
+  const resolvedCourseId = courseId || assignment.course_id;
+  const rubricEditHref = resolvedCourseId
+    ? `/courses/${resolvedCourseId}/assignments/${assignment.id}/rubric`
+    : undefined;
+  const normalizedAiPolicy = (assignment.ai_policy_level || "YELLOW").toUpperCase();
+  const requiresIntegrityModal =
+    normalizedAiPolicy === "YELLOW" || normalizedAiPolicy === "RED";
+  const isUploadLocked =
+    !isInstructor && requiresIntegrityModal && !pledgeStatus?.signed;
+
+  const handlePledgeSigned = (result: SignedPledgeResult) => {
+    setPledgeStatus(result.pledge);
+    setSelfContributionPct(result.selfContributionPct);
+    setSelectedAiTools(result.toolsUsed);
+    if (result.usageDescription) {
+      setAiUsageDescription(result.usageDescription);
+    }
+    setIsPledgeSigned(true);
+    setFormErrors((prev) => ({
+      ...prev,
+      pledge: "",
+      aiDescription: "",
+    }));
+    setPledgeModalOpen(false);
+  };
 
   return (
     <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
@@ -327,14 +393,24 @@ export const AssignmentDetailPage: React.FC = () => {
           <p className="text-xs font-medium text-[#1e3a8a]">
             Chế độ Giảng viên: Bạn có thể kiểm tra toàn bộ bản tóm tắt AI, câu hỏi Viva và câu trả lời của sinh viên.
           </p>
-          <PillTabs
-            items={[
-              { value: "review", label: "Kiểm tra bài nộp & Viva (Giảng viên)" },
-              { value: "preview", label: "Xem trước giao diện nộp bài (SV)" },
-            ]}
-            value={instructorViewMode}
-            onChange={(val) => setInstructorViewMode(val as "review" | "preview")}
-          />
+          <div className="flex flex-wrap items-center gap-2.5">
+            {rubricEditHref && (
+              <Link to={rubricEditHref}>
+                <MmButton variant="secondary" size="sm">
+                  <ClipboardList className="h-4 w-4" />
+                  <span>Thiết kế Rubric</span>
+                </MmButton>
+              </Link>
+            )}
+            <PillTabs
+              items={[
+                { value: "review", label: "Kiểm tra bài nộp & Viva (Giảng viên)" },
+                { value: "preview", label: "Xem trước giao diện nộp bài (SV)" },
+              ]}
+              value={instructorViewMode}
+              onChange={(val) => setInstructorViewMode(val as "review" | "preview")}
+            />
+          </div>
         </div>
       )}
 
@@ -380,9 +456,18 @@ export const AssignmentDetailPage: React.FC = () => {
             )}
           </div>
 
+          {/* Bảng tiêu chí chấm điểm Rubric (T2-P-M3-02) */}
+          <RubricPreviewCard
+            rubric={rubric}
+            loading={rubricLoading}
+            learningObjectives={learningObjectives}
+            isInstructor={isInstructor}
+            editHref={rubricEditHref}
+          />
+
           {/* Submission Form Card */}
           <div className="rounded-2xl border border-[#e5e7eb] bg-white p-6 sm:p-8 shadow-xs">
-            <div className="mb-6 flex items-center justify-between border-b border-[#f3f4f6] pb-4">
+            <div className="mb-6 flex flex-wrap items-center justify-between gap-3 border-b border-[#f3f4f6] pb-4">
               <div>
                 <h2 className="font-mm-display text-xl font-bold text-mm-dark">
                   Khu vực nộp bài tập
@@ -391,9 +476,17 @@ export const AssignmentDetailPage: React.FC = () => {
                   Gửi sản phẩm thực hiện, khai báo tên đề tài và bảng giải trình sử dụng AI
                 </p>
               </div>
-              <span className="rounded-full border border-[#e5e7eb] bg-[#f9fafb] px-3 py-1 font-mm-mono text-xs font-medium text-[#374151]">
-                Lần nộp: v{(assignment.submissions?.length || 0) + 1}
-              </span>
+              <div className="flex flex-wrap items-center gap-2">
+                {pledgeStatus?.signed && (
+                  <span className="inline-flex items-center gap-1.5 rounded-full border border-[#a7f3d0] bg-[#ecfdf5] px-3 py-1 font-mm-ui text-xs font-medium text-[#047857]">
+                    <ShieldCheck className="h-3.5 w-3.5" />
+                    <span>Đã ký cam kết liêm chính học thuật</span>
+                  </span>
+                )}
+                <span className="rounded-full border border-[#e5e7eb] bg-[#f9fafb] px-3 py-1 font-mm-mono text-xs font-medium text-[#374151]">
+                  Lần nộp: v{(assignment.submissions?.length || 0) + 1}
+                </span>
+              </div>
             </div>
 
             <form onSubmit={handleSubmit} className="space-y-6">
@@ -441,9 +534,34 @@ export const AssignmentDetailPage: React.FC = () => {
                 />
               </div>
 
-              {/* File Upload Zone */}
+              {/* File Upload Zone (Khóa bởi AcademicIntegrityModal nếu chính sách Vàng/Đỏ chưa ký) */}
               {submissionTab === "file" && (
                 <div>
+                  {isUploadLocked ? (
+                    <div className="flex flex-col items-center justify-center gap-3 rounded-2xl border-2 border-dashed border-mm-border bg-mm-divider/45 p-8 text-center">
+                      <div className="rounded-xl border border-mm-border bg-white p-3 text-mm-text-muted">
+                        <Lock className="h-6 w-6" />
+                      </div>
+                      <div className="max-w-md space-y-1">
+                        <p className="font-mm-mid text-sm font-semibold text-mm-heading">
+                          Khu vực tải tệp đang tạm khóa theo quy chế Liêm chính Học thuật
+                        </p>
+                        <p className="font-mm-ui text-xs leading-relaxed text-mm-text-secondary">
+                          Bài tập áp dụng chính sách AI mức{" "}
+                          {normalizedAiPolicy === "RED" ? "Đỏ (Cấm sử dụng AI)" : "Vàng (Giới hạn có kiểm soát)"}. Bạn cần đọc 3 điều khoản và ký cam kết liêm chính để mở khóa vùng kéo-thả tệp.
+                        </p>
+                      </div>
+                      <MmButton
+                        type="button"
+                        variant="brand"
+                        size="md"
+                        onClick={() => setPledgeModalOpen(true)}
+                      >
+                        <ShieldCheck className="h-4 w-4" />
+                        <span>Bắt đầu nộp bài &amp; Ký cam kết liêm chính</span>
+                      </MmButton>
+                    </div>
+                  ) : (
                   <div
                     className={clsx(
                       "relative flex flex-col items-center justify-center rounded-2xl border-2 border-dashed p-8 text-center transition-all",
@@ -495,6 +613,7 @@ export const AssignmentDetailPage: React.FC = () => {
                       </div>
                     )}
                   </div>
+                  )}
                   {formErrors.file && (
                     <p className="mt-1.5 text-xs text-rose-600">{formErrors.file}</p>
                   )}
@@ -688,7 +807,7 @@ export const AssignmentDetailPage: React.FC = () => {
                   variant="brand"
                   size="md"
                   loading={submitting}
-                  disabled={submitting || deadlineStatus?.isPastCutoff}
+                  disabled={submitting || deadlineStatus?.isPastCutoff || isUploadLocked}
                   className="rounded-full shadow-sm"
                 >
                   <FileCheck2 className="h-4 w-4 mr-2" />
@@ -889,6 +1008,19 @@ export const AssignmentDetailPage: React.FC = () => {
           </div>
         </div>
       </MmModal>
+      {/* Focus-Trap Academic Integrity Pledge Modal (T2-P-M3-03) */}
+      <AcademicIntegrityModal
+        open={pledgeModalOpen}
+        assignmentId={assignment.id}
+        assignmentTitle={assignment.title}
+        aiPolicyLevel={assignment.ai_policy_level}
+        pledgeStatus={pledgeStatus}
+        initialSelfContributionPct={selfContributionPct}
+        initialToolsUsed={selectedAiTools}
+        initialUsageDescription={aiUsageDescription}
+        onCancel={() => setPledgeModalOpen(false)}
+        onSigned={handlePledgeSigned}
+      />
         </>
       )}
     </div>

@@ -2,3 +2,5 @@
 # SPDX-License-Identifier: MIT
 
 """Assessment, Submissions and Viva Sandbox module."""
+
+from app.modules.assessment import public_api  # noqa: E402,F401 - registers BR-LO-01 hook

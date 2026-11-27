@@ -13,12 +13,15 @@ import {
   BookOpen,
   CheckCircle2,
   ClipboardCheck,
+  ClipboardList,
   Copy,
   Edit3,
   FileCheck2,
+  FileSpreadsheet,
   Lock,
   Plus,
   Save,
+  Send,
   Target,
   Trash2,
   Unlock,
@@ -42,6 +45,7 @@ import { RoleBadge } from "../../components/RoleBadge";
 import { showToast } from "../../components/Toast";
 import { StudentLayout } from "../../layouts/StudentLayout";
 import { TeacherLayout } from "../../layouts/TeacherLayout";
+import { AssignmentFormModal } from "../assessment/AssignmentFormModal";
 import { CloneTemplateModal } from "./CloneTemplateModal";
 import { LoFormModal } from "./LoFormModal";
 import { StudentRosterPage } from "./StudentRosterPage";
@@ -93,6 +97,8 @@ export const CourseDetailPage: React.FC = () => {
 
   const [pendingStatusTarget, setPendingStatusTarget] = useState<CourseStatus | null>(null);
   const [transitioningStatus, setTransitioningStatus] = useState(false);
+  const [assignmentModalOpen, setAssignmentModalOpen] = useState(false);
+  const [publishingAssignmentId, setPublishingAssignmentId] = useState<string | null>(null);
 
   const loadCourse = useCallback(async () => {
     if (!courseId) return;
@@ -222,6 +228,26 @@ export const CourseDetailPage: React.FC = () => {
     }
   };
 
+  const handlePublishAssignment = async (assignmentId: string) => {
+    if (!canEdit || publishingAssignmentId) return;
+    setPublishingAssignmentId(assignmentId);
+    try {
+      await assessmentService.publishAssignment(assignmentId);
+      showToast("success", "Đã xuất bản bài tập cho sinh viên.");
+      if (course) {
+        const refreshed = await assessmentService.listCourseAssignments(course.id);
+        setAssignments(refreshed);
+      }
+    } catch (err) {
+      showToast(
+        "error",
+        err instanceof ApiError ? err.message : "Không thể xuất bản bài tập."
+      );
+    } finally {
+      setPublishingAssignmentId(null);
+    }
+  };
+
   const Layout = isInstructor ? TeacherLayout : StudentLayout;
 
   const tabs: PillTabItem<DetailTab>[] = [
@@ -333,6 +359,15 @@ export const CourseDetailPage: React.FC = () => {
                     <span>Ngân hàng đề & Khảo thí</span>
                   </MmButton>
                 </Link>
+
+                {isInstructor && (
+                  <Link to={`/courses/${course.id}/reports`}>
+                    <MmButton variant="secondary">
+                      <FileSpreadsheet className="h-4 w-4" />
+                      <span>Xuất bảng điểm &amp; Báo cáo</span>
+                    </MmButton>
+                  </Link>
+                )}
 
                 {canEdit && !course.is_template && (
                   <>
@@ -599,15 +634,25 @@ export const CourseDetailPage: React.FC = () => {
 
           {activeTab === "assignments" && (
             <MmCard variant="standard" className="space-y-4">
-              <div className="flex items-center justify-between border-b border-mm-divider pb-3">
+              <div className="flex flex-col justify-between gap-3 border-b border-mm-divider pb-3 sm:flex-row sm:items-center">
                 <div>
                   <h2 className="font-mm-display text-lg font-semibold text-mm-heading">
-                    Danh sách Bài tập & Đồ án
+                    Danh sách Bài tập &amp; Đồ án
                   </h2>
                   <p className="font-mm-ui text-xs text-mm-text-muted">
                     Truy cập nhiệm vụ học tập, nộp sản phẩm, khai báo AI và tham gia vấn đáp Viva Sandbox
                   </p>
                 </div>
+                {canEdit && (
+                  <MmButton
+                    variant="brand"
+                    size="sm"
+                    onClick={() => setAssignmentModalOpen(true)}
+                  >
+                    <Plus className="h-4 w-4" />
+                    <span>Tạo bài tập mới</span>
+                  </MmButton>
+                )}
               </div>
               {assignments.length === 0 ? (
                 <p className="py-8 text-center font-mm-ui text-sm text-mm-text-muted">
@@ -615,33 +660,67 @@ export const CourseDetailPage: React.FC = () => {
                 </p>
               ) : (
                 <div className="grid gap-3">
-                  {assignments.map((item) => (
-                    <Link
-                      key={item.id}
-                      to={`/courses/${course.id}/assignments/${item.id}`}
-                      className="flex flex-col justify-between gap-3 rounded-mm-card border border-mm-divider bg-white p-4 transition-colors hover:border-mm-primary sm:flex-row sm:items-center"
-                    >
-                      <div className="space-y-1">
-                        <div className="flex flex-wrap items-center gap-2">
-                          <span className="font-mm-display text-base font-semibold text-mm-heading">
-                            {item.title}
-                          </span>
-                          {item.is_viva_required && (
-                            <span className="rounded-full bg-[#eff6ff] px-2.5 py-0.5 font-mm-ui text-xs font-medium text-[#1e40af]">
-                              Viva ({item.viva_question_count} câu)
-                            </span>
-                          )}
+                  {assignments.map((item) => {
+                    const isDraft = item.is_published === false;
+                    return (
+                      <div
+                        key={item.id}
+                        className="flex flex-col justify-between gap-3 rounded-mm-card border border-mm-divider bg-white p-4 transition-colors hover:border-mm-blue-hover/60 lg:flex-row lg:items-center"
+                      >
+                        <div className="space-y-1">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <Link
+                              to={`/courses/${course.id}/assignments/${item.id}`}
+                              className="font-mm-display text-base font-semibold text-mm-heading transition-colors hover:text-mm-blue-hover"
+                            >
+                              {item.title}
+                            </Link>
+                            {isDraft && (
+                              <span className="rounded-full bg-mm-btn-secondary px-2.5 py-0.5 font-mm-ui text-xs font-medium text-mm-text-secondary">
+                                Bản nháp
+                              </span>
+                            )}
+                            {item.is_viva_required && (
+                              <span className="rounded-full bg-mm-blue-light/35 px-2.5 py-0.5 font-mm-ui text-xs font-medium text-mm-blue-deep">
+                                Kèm vấn đáp Viva ({item.viva_question_count} câu)
+                              </span>
+                            )}
+                          </div>
+                          <p className="font-mm-data text-xs text-mm-text-secondary">
+                            Hạn nộp: {new Date(item.due_date).toLocaleString("vi-VN")} · Đã nộp: {item.submission_count} phiên bản
+                            {item.latest_status ? ` · Trạng thái: ${item.latest_status}` : ""}
+                          </p>
                         </div>
-                        <p className="font-mm-data text-xs text-mm-text-secondary">
-                          Hạn nộp: {new Date(item.due_date).toLocaleString("vi-VN")} · Đã nộp: {item.submission_count} phiên bản
-                          {item.latest_status ? ` · Trạng thái: ${item.latest_status}` : ""}
-                        </p>
+
+                        <div className="flex flex-wrap items-center gap-2">
+                          {canEdit && isDraft && (
+                            <MmButton
+                              variant="brand"
+                              size="sm"
+                              loading={publishingAssignmentId === item.id}
+                              onClick={() => void handlePublishAssignment(item.id)}
+                            >
+                              <Send className="h-3.5 w-3.5" />
+                              <span>Xuất bản</span>
+                            </MmButton>
+                          )}
+                          {isInstructor && (
+                            <Link to={`/courses/${course.id}/assignments/${item.id}/rubric`}>
+                              <MmButton variant="secondary" size="sm">
+                                <ClipboardList className="h-3.5 w-3.5" />
+                                <span>Thiết kế Rubric</span>
+                              </MmButton>
+                            </Link>
+                          )}
+                          <Link to={`/courses/${course.id}/assignments/${item.id}`}>
+                            <MmButton variant="secondary" size="sm">
+                              <span>Mở bài tập</span>
+                            </MmButton>
+                          </Link>
+                        </div>
                       </div>
-                      <MmButton variant="secondary" size="sm">
-                        <span>Mở bài tập</span>
-                      </MmButton>
-                    </Link>
-                  ))}
+                    );
+                  })}
                 </div>
               )}
             </MmCard>
@@ -688,6 +767,13 @@ export const CourseDetailPage: React.FC = () => {
             loading={deletingLoLoading}
             onConfirm={handleDeleteLo}
             onCancel={() => setDeletingLo(null)}
+          />
+
+          <AssignmentFormModal
+            open={assignmentModalOpen}
+            courseId={course.id}
+            onClose={() => setAssignmentModalOpen(false)}
+            onSaved={() => void loadCourse()}
           />
 
           <ConfirmModal

@@ -30,10 +30,12 @@ import { CourseDetailPage } from "./pages/course/CourseDetailPage";
 import { CourseListPage } from "./pages/course/CourseListPage";
 import { StudentRosterPage } from "./pages/course/StudentRosterPage";
 import { AssignmentDetailPage } from "./pages/assessment/AssignmentDetailPage";
+import { RubricBuilderPage } from "./pages/assessment/RubricBuilderPage";
 import { VivaSandboxPage } from "./pages/assessment/VivaSandboxPage";
 import { ExamManagementPage } from "./pages/examination/ExamManagementPage";
 import { ExamResultPage } from "./pages/examination/ExamResultPage";
 import { ExamTakingPage } from "./pages/examination/ExamTakingPage";
+import { GradeReportPage } from "./pages/reports/GradeReportPage";
 
 const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const accessToken = useAuthStore((s) => s.accessToken);
@@ -97,6 +99,22 @@ export const MainApp: React.FC = () => {
           element={
             <ProtectedRoute>
               <AssignmentDetailPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/courses/:courseId/assignments/:assignmentId/rubric"
+          element={
+            <ProtectedRoute>
+              <RubricBuilderPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/courses/:courseId/reports"
+          element={
+            <ProtectedRoute>
+              <GradeReportPage />
             </ProtectedRoute>
           }
         />

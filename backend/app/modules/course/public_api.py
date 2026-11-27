@@ -30,6 +30,18 @@ class LODTO:
 
 
 @dataclass(frozen=True)
+class CourseInfoDTO:
+    """Immutable course header information (used by academic report export)."""
+
+    id: uuid.UUID
+    course_code: str
+    section_code: str
+    name: str
+    semester: str
+    credits: int
+
+
+@dataclass(frozen=True)
 class StudentEnrollmentDTO:
     """Immutable active student enrollment DTO."""
 
@@ -92,6 +104,19 @@ class CoursePublicService:
         if role not in set(allowed_roles):
             raise CourseForbiddenException()
         return role
+
+    async def get_course_info(self, course_id: uuid.UUID) -> Optional[CourseInfoDTO]:
+        course = await self.repo.get_course_by_id(course_id)
+        if course is None:
+            return None
+        return CourseInfoDTO(
+            id=course.id,
+            course_code=course.course_code,
+            section_code=course.section_code,
+            name=course.name,
+            semester=course.semester,
+            credits=course.credits,
+        )
 
     async def list_active_students(self, course_id: uuid.UUID) -> List[StudentEnrollmentDTO]:
         users = await self.repo.list_all_active_students(course_id)

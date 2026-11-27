@@ -21,8 +21,10 @@ from app.modules.assessment.exceptions import (
     AIDisclosureValidationException,
     AssessmentAccessDeniedException,
     AssessmentNotFoundException,
+    AssignmentNotOpenException,
     IntegrityPledgeRequiredException,
     InvalidSubmissionPayloadException,
+    MaxAttemptsExceededException,
     PublicGitRepositoryException,
     SubmissionCutoffExceededException,
 )
@@ -59,17 +61,27 @@ class AssessmentSubmissionService:
         self,
         db: AsyncSession,
         course_id: uuid.UUID,
-        user_id: uuid.UUID
+        user_id: uuid.UUID,
+        system_role: Optional[str] = None,
     ) -> List[AssignmentSummaryItem]:
-        """List all assignments in a course with student's submission count and latest status."""
+        """List all assignments in a course with student's submission count and latest status.
+
+        Draft assignments are hidden from non-instructor roles (STUDENT).
+        """
+        role = await self._get_user_course_role(
+            db=db, course_id=course_id, user_id=user_id, system_role=system_role
+        )
         stmt = (
             select(Assignment)
             .where(Assignment.course_id == course_id)
             .options(
-                selectinload(Assignment.submissions.and_(AssignmentSubmission.user_id == user_id))
+                selectinload(Assignment.submissions.and_(AssignmentSubmission.user_id == user_id)),
+                selectinload(Assignment.rubric),
             )
             .order_by(Assignment.due_date.asc())
         )
+        if role not in {"INSTRUCTOR", "TA"}:
+            stmt = stmt.where(Assignment.is_published.is_(True))
         res = await db.execute(stmt)
         assignments = res.scalars().all()
         items: List[AssignmentSummaryItem] = []
@@ -86,6 +98,12 @@ class AssessmentSubmissionService:
                     is_viva_required=a.is_viva_required,
                     viva_question_count=a.viva_question_count,
                     ai_policy_level=a.ai_policy_level or "YELLOW",
+                    is_published=bool(a.is_published),
+                    available_from=a.available_from,
+                    max_points=float(a.max_points if a.max_points is not None else 10.0),
+                    max_attempts=a.max_attempts,
+                    has_rubric=a.rubric is not None,
+                    rubric_is_frozen=bool(a.rubric.is_frozen) if a.rubric is not None else False,
                     submission_count=len(subs),
                     latest_status=subs[0].status if subs else None,
                 )
@@ -122,7 +140,8 @@ class AssessmentSubmissionService:
             select(Assignment)
             .where(Assignment.id == assignment_id)
             .options(
-                selectinload(Assignment.submissions.and_(AssignmentSubmission.user_id == user_id))
+                selectinload(Assignment.submissions.and_(AssignmentSubmission.user_id == user_id)),
+                selectinload(Assignment.rubric),
             )
         )
         res = await db.execute(stmt)
@@ -136,6 +155,10 @@ class AssessmentSubmissionService:
             user_id=user_id,
             system_role=current_user.system_role if current_user else None,
         )
+        # Draft assignments are invisible to students.
+        if my_role == "STUDENT" and assignment.is_published is False:
+            raise AssessmentNotFoundException(str(assignment_id))
+        rubric = assignment.rubric
 
         submissions = sorted(assignment.submissions, key=lambda s: s.version, reverse=True)
         return AssignmentDetailResponse(
@@ -154,6 +177,14 @@ class AssessmentSubmissionService:
             viva_question_count=assignment.viva_question_count,
             ai_policy_level=assignment.ai_policy_level or "YELLOW",
             my_role=my_role,
+            is_published=bool(assignment.is_published),
+            available_from=assignment.available_from,
+            max_points=float(assignment.max_points if assignment.max_points is not None else 10.0),
+            is_group_assignment=bool(assignment.is_group_assignment),
+            is_transfer_task=bool(assignment.is_transfer_task),
+            max_attempts=assignment.max_attempts,
+            has_rubric=rubric is not None,
+            rubric_is_frozen=bool(rubric.is_frozen) if rubric is not None else False,
             submissions=[SubmissionResponse.model_validate(s) for s in submissions]
         )
 
@@ -317,6 +348,10 @@ class AssessmentSubmissionService:
 
         now = datetime.now(timezone.utc)
 
+        # 1b. Check availability window (E-ASN-02)
+        if assignment.available_from and now < assignment.available_from:
+            raise AssignmentNotOpenException()
+
         # 2. Check Cutoff (BR-11 / E-8)
         if assignment.until_date and now > assignment.until_date:
             raise SubmissionCutoffExceededException()
@@ -378,6 +413,9 @@ class AssessmentSubmissionService:
         )
         ver_res = await db.execute(ver_stmt)
         latest_ver = ver_res.scalar_one_or_none()
+        # 7b. Enforce maximum attempts (E-ASN-03)
+        if assignment.max_attempts and (latest_ver or 0) >= assignment.max_attempts:
+            raise MaxAttemptsExceededException(assignment.max_attempts)
         new_version = (latest_ver or 0) + 1
 
         # 8. Freeze Rubric if first submission in the course task
