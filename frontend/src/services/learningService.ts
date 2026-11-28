@@ -6,11 +6,14 @@
 import type {
   CheckpointCreatePayload,
   CheckpointSubmitResult,
+  CheckpointSuggestion,
   CheckpointUpdatePayload,
+  GenerateCheckpointSuggestionsRequest,
   LearningMaterial,
   LearningModule,
   MaterialCheckpoint,
   MaterialCreatePayload,
+  MaterialSectionsResponse,
   MaterialStructuredContent,
   MaterialUpdatePayload,
   MaterialUploadResult,
@@ -210,6 +213,37 @@ export const learningService = {
     return httpRequest<CheckpointSubmitResult>(
       `/courses/${courseId}/learning/checkpoints/${checkpointId}/submit`,
       { method: "POST", body: { selected_option: selectedOption } }
+    );
+  },
+
+  getMaterialSections(
+    courseId: string,
+    materialId: string
+  ): Promise<MaterialSectionsResponse> {
+    return httpRequest<MaterialSectionsResponse>(
+      `/courses/${courseId}/learning/materials/${materialId}/sections`
+    );
+  },
+
+  generateCheckpointSuggestions(
+    courseId: string,
+    materialId: string,
+    payload: GenerateCheckpointSuggestionsRequest
+  ): Promise<{ suggestions: CheckpointSuggestion[] }> {
+    return httpRequest<{ suggestions: CheckpointSuggestion[] }>(
+      `/courses/${courseId}/learning/materials/${materialId}/generate-checkpoint-suggestions`,
+      { method: "POST", body: payload }
+    );
+  },
+
+  batchCreateCheckpoints(
+    courseId: string,
+    materialId: string,
+    checkpoints: CheckpointCreatePayload[]
+  ): Promise<{ created_count: number; checkpoints: MaterialCheckpoint[] }> {
+    return httpRequest<{ created_count: number; checkpoints: MaterialCheckpoint[] }>(
+      `/courses/${courseId}/learning/materials/${materialId}/batch-checkpoints`,
+      { method: "POST", body: { checkpoints } }
     );
   },
 };

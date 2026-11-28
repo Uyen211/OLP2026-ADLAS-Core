@@ -107,6 +107,8 @@ export interface CheckpointCreatePayload {
   time_limit_seconds?: number;
   rewind_seconds?: number;
   lo_id?: string | null;
+  bloom_level?: "REMEMBER" | "UNDERSTAND" | "APPLY";
+  source_citation?: string | null;
 }
 
 export interface CheckpointUpdatePayload {
@@ -120,6 +122,8 @@ export interface CheckpointUpdatePayload {
   time_limit_seconds?: number;
   rewind_seconds?: number;
   lo_id?: string | null;
+  bloom_level?: "REMEMBER" | "UNDERSTAND" | "APPLY";
+  source_citation?: string | null;
 }
 
 export interface CheckpointSubmitResult {
@@ -142,4 +146,39 @@ export interface MaterialStructuredContent {
   content_kind: "PDF_PAGES" | "SLIDE_DECK" | "DOC_SECTIONS" | "UNSUPPORTED";
   total_items: number;
   items: MaterialPageItem[];
+}
+
+export interface DocumentSection {
+  section_id: number;
+  title: string;
+  start_page: number;
+  end_page: number;
+  word_count: number;
+  summary: string;
+}
+
+export interface MaterialSectionsResponse {
+  material_id: string;
+  total_pages: number;
+  sections: DocumentSection[];
+}
+
+export interface GenerateCheckpointSuggestionsRequest {
+  section_ids: number[];
+  bloom_level: "REMEMBER" | "UNDERSTAND" | "APPLY";
+  num_questions: number;
+  lo_id?: string | null;
+}
+
+export interface CheckpointSuggestion {
+  temp_id: string;
+  question_text: string;
+  options: Record<string, string>;
+  correct_option: string;
+  bloom_level: "REMEMBER" | "UNDERSTAND" | "APPLY";
+  lo_id?: string | null;
+  citation_page: number;
+  citation_paragraph: number;
+  citation: string;
+  evidence_quote: string;
 }
