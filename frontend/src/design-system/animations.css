@@ -1,0 +1,82 @@
+/*
+ * Copyright (c) 2026 ADLAS Team - OLP 2026 Open Source Software Track
+ * SPDX-License-Identifier: MIT
+ */
+
+/* Interactive Dot-Grid Canvas */
+.edu-dot-grid {
+  background-color: var(--edu-surface);
+  background-image: radial-gradient(rgba(127, 187, 221, 0.35) 1px, transparent 1px);
+  background-size: 20px 20px;
+}
+
+/* GPU-composited animations */
+@keyframes eduFadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes eduSlideUp {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes eduSlideDown {
+  from {
+    opacity: 0;
+    transform: translateY(-12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes eduScaleIn {
+  from {
+    opacity: 0;
+    transform: scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.animate-edu-fade-in {
+  animation: eduFadeIn 150ms cubic-bezier(0.2, 0, 0, 1) forwards;
+}
+
+.animate-edu-slide-up {
+  animation: eduSlideUp 200ms cubic-bezier(0.2, 0, 0, 1) forwards;
+}
+
+.animate-edu-slide-down {
+  animation: eduSlideDown 200ms cubic-bezier(0.2, 0, 0, 1) forwards;
+}
+
+.animate-edu-scale-in {
+  animation: eduScaleIn 180ms cubic-bezier(0.2, 0, 0, 1) forwards;
+}
+
+/* Reduced motion accessibility */
+@media (prefers-reduced-motion: reduce) {
+  .animate-edu-fade-in,
+  .animate-edu-slide-up,
+  .animate-edu-slide-down,
+  .animate-edu-scale-in {
+    animation: none !important;
+    transition: none !important;
+    transform: none !important;
+  }
+}

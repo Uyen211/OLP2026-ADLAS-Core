@@ -1,0 +1,54 @@
+/*
+ * Copyright (c) 2026 ADLAS Team - OLP 2026 Open Source Software Track
+ * SPDX-License-Identifier: MIT
+ */
+
+:root {
+  /* Crisp Sky & Solar Academy Color System */
+  --edu-surface: #ffffff;
+  --edu-surface-tint: #f5fbfd;
+  --edu-surface-subtle: #eaf6fa;
+  --edu-surface-container: #ffffff;
+
+  /* Structure & Calm */
+  --edu-sky-ice: #c4e9f2;
+  --edu-sky-cerulean: #7fbbdd;
+  --edu-border: rgba(15, 34, 54, 0.12);
+  --edu-border-sky: rgba(127, 187, 221, 0.55);
+
+  /* Energy & Mastery */
+  --edu-amber-vivid: #f58b05;
+  --edu-gold-sun: #ffc22f;
+  --edu-accent-ink: #7a4100;
+  --edu-gold-ink: #1a1400;
+
+  /* Primary Ink Roles */
+  --edu-primary: #0f2236;
+  --edu-on-primary: #ffffff;
+  --edu-muted: #4a5f75;
+
+  /* Pedagogical States */
+  --edu-correct: #15803d;
+  --edu-correct-bg: #ecfdf5;
+  --edu-incorrect: #b91c1c;
+  --edu-incorrect-bg: #fef2f2;
+  --edu-hint-bg: #fffbeb;
+  --edu-hint-border: #f58b05;
+
+  /* Radii Scale */
+  --edu-radius-sm: 4px;
+  --edu-radius-md: 8px;
+  --edu-radius-lg: 12px;
+  --edu-radius-xl: 18px;
+  --edu-radius-pill: 9999px;
+
+  /* Shadows */
+  --edu-shadow-ambient: 0 4px 20px -2px rgba(15, 34, 54, 0.08);
+  --edu-shadow-card: 0 1px 3px 0 rgba(15, 34, 54, 0.06), 0 1px 2px -1px rgba(15, 34, 54, 0.06);
+  --edu-shadow-elevated: 0 10px 25px -5px rgba(15, 34, 54, 0.12);
+
+  /* Typography metrics */
+  --edu-font-display: "Space Grotesk", "Outfit", -apple-system, sans-serif;
+  --edu-font-body: "Be Vietnam Pro", "DM Sans", -apple-system, sans-serif;
+  --edu-font-mono: "JetBrains Mono", monospace;
+}
