@@ -33,8 +33,6 @@ import { MmButton } from "../../components/MmButton";
 import { MmCard } from "../../components/MmCard";
 import { showToast } from "../../components/Toast";
 import { CheckpointEditorModal } from "./CheckpointEditorModal";
-import { AiCheckpointStudioModal } from "./AiCheckpointStudioModal";
-import { Sparkles } from "lucide-react";
 import { MaterialFormModal } from "./MaterialFormModal";
 import { MaterialViewerModal } from "./MaterialViewerModal";
 import { ModuleFormModal } from "./ModuleFormModal";
@@ -81,7 +79,6 @@ export const CourseMaterialsTab: React.FC<CourseMaterialsTabProps> = ({
   const [targetModuleId, setTargetModuleId] = useState<string>("");
   const [editingMaterial, setEditingMaterial] = useState<LearningMaterial | null>(null);
   const [checkpointMaterial, setCheckpointMaterial] = useState<LearningMaterial | null>(null);
-  const [aiStudioMaterial, setAiStudioMaterial] = useState<LearningMaterial | null>(null);
   const [viewingMaterial, setViewingMaterial] = useState<LearningMaterial | null>(null);
 
   // Deletion confirm modals
@@ -576,22 +573,11 @@ export const CourseMaterialsTab: React.FC<CourseMaterialsTabProps> = ({
                                       )}
                                     </MmButton>
 
-                                    {(mat.material_type === "PDF" || mat.material_type === "SLIDE") && (
-                                      <MmButton
-                                        variant="ghost"
-                                        size="sm"
-                                        onClick={() => setAiStudioMaterial(mat)}
-                                        title="Tự Động Tạo Câu Hỏi Ôn Tập Từ Tài Liệu"
-                                      >
-                                        <Sparkles className="h-3.5 w-3.5 text-blue-600" />
-                                      </MmButton>
-                                    )}
-
                                     <MmButton
                                       variant="ghost"
                                       size="sm"
                                       onClick={() => setCheckpointMaterial(mat)}
-                                      title="Biên tập điểm dừng kiểm tra"
+                                      title="Biên tập điểm dừng & Gợi ý câu hỏi AI"
                                     >
                                       <BookmarkCheck className="h-3.5 w-3.5 text-amber-500" />
                                     </MmButton>
@@ -684,15 +670,8 @@ export const CourseMaterialsTab: React.FC<CourseMaterialsTabProps> = ({
         open={Boolean(checkpointMaterial)}
         courseId={courseId}
         material={checkpointMaterial}
-        onClose={() => setCheckpointMaterial(null)}
-      />
-
-      <AiCheckpointStudioModal
-        open={Boolean(aiStudioMaterial)}
-        courseId={courseId}
-        material={aiStudioMaterial}
         availableLos={availableLos}
-        onClose={() => setAiStudioMaterial(null)}
+        onClose={() => setCheckpointMaterial(null)}
       />
 
       <MaterialViewerModal

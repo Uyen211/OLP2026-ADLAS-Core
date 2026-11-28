@@ -5,26 +5,36 @@
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
+  AlertTriangle,
   ArrowLeft,
   BookmarkCheck,
+  BookOpen,
+  Check,
   CheckCircle2,
   Loader2,
   Pause,
   Pencil,
   Play,
   Plus,
+  Quote,
   RotateCcw,
   RotateCw,
+  Sparkles,
   Trash2,
   X,
 } from "lucide-react";
 import { learningService } from "../../../../services/learningService";
 import { ApiError } from "../../../../services/httpClient";
+import type { LOResponse } from "../../../../types/course";
 import type {
+  CheckpointCreatePayload,
+  CheckpointSuggestion,
+  DocumentSection,
   LearningMaterial,
   MaterialCheckpoint,
   MaterialStructuredContent,
 } from "../../../../types/learning";
+import { BloomBadge } from "../../components/BloomBadge";
 import { MmButton } from "../../components/MmButton";
 import { showToast } from "../../components/Toast";
 import { DocumentFilmstripTrack } from "./DocumentFilmstripTrack";
@@ -36,6 +46,7 @@ export interface CheckpointEditorModalProps {
   open: boolean;
   courseId: string;
   material: LearningMaterial | null;
+  availableLos?: LOResponse[];
   onClose: () => void;
 }
 
@@ -43,6 +54,7 @@ export const CheckpointEditorModal: React.FC<CheckpointEditorModalProps> = ({
   open,
   courseId,
   material,
+  availableLos = [],
   onClose,
 }) => {
   const videoRef = useRef<HTMLVideoElement | null>(null);
@@ -62,7 +74,7 @@ export const CheckpointEditorModal: React.FC<CheckpointEditorModalProps> = ({
   const [currentPageIndex, setCurrentPageIndex] = useState(1);
 
   // Right-panel mode & selection
-  const [panelMode, setPanelMode] = useState<"list" | "form">("list");
+  const [panelMode, setPanelMode] = useState<"list" | "form" | "ai_distribute">("list");
   const [selectedId, setSelectedId] = useState<string | null>(null);
 
   // Form fields
@@ -75,11 +87,33 @@ export const CheckpointEditorModal: React.FC<CheckpointEditorModalProps> = ({
   const [optC, setOptC] = useState("");
   const [optD, setOptD] = useState("");
   const [correctOption, setCorrectOption] = useState("A");
+  const [bloomLevel, setBloomLevel] = useState<"REMEMBER" | "UNDERSTAND" | "APPLY">("UNDERSTAND");
+  const [sourceCitation, setSourceCitation] = useState("");
+  const [loId, setLoId] = useState("");
   const [timeLimitSeconds, setTimeLimitSeconds] = useState(10);
   const [rewindSeconds, setRewindSeconds] = useState(15);
   const [isBlocking, setIsBlocking] = useState(true);
+  const [suggestingPage, setSuggestingPage] = useState(false);
+
+  // AI Distribute (Bloom Matrix) state
+  const [sections, setSections] = useState<DocumentSection[]>([]);
+  const [loadingSections, setLoadingSections] = useState(false);
+  const [scanError, setScanError] = useState<string | null>(null);
+  const [selectedSectionIds, setSelectedSectionIds] = useState<number[]>([]);
+  const [bloomDist, setBloomDist] = useState<{ REMEMBER: number; UNDERSTAND: number; APPLY: number }>({
+    REMEMBER: 2,
+    UNDERSTAND: 2,
+    APPLY: 1,
+  });
+  const [aiLoId, setAiLoId] = useState("");
+  const [generatingAi, setGeneratingAi] = useState(false);
+  const [aiSuggestions, setAiSuggestions] = useState<CheckpointSuggestion[]>([]);
+  const [editingTempId, setEditingTempId] = useState<string | null>(null);
+  const [savingBatch, setSavingBatch] = useState(false);
 
   const isVideo = material?.material_type === "VIDEO";
+  const supportsAiDoc =
+    !isVideo && (material?.material_type === "PDF" || material?.material_type === "SLIDE");
 
   const sortedCheckpoints = useMemo(() => {
     return [...checkpoints].sort((a, b) => {
@@ -100,10 +134,13 @@ export const CheckpointEditorModal: React.FC<CheckpointEditorModalProps> = ({
     setOptC("");
     setOptD("");
     setCorrectOption("A");
+    setBloomLevel("UNDERSTAND");
+    setSourceCitation("");
+    setLoId(material?.lo_id || "");
     setTimeLimitSeconds(10);
     setRewindSeconds(15);
     setIsBlocking(true);
-  }, []);
+  }, [material?.lo_id]);
 
   const loadCheckpoints = useCallback(async () => {
     if (!material) return;
@@ -252,6 +289,9 @@ export const CheckpointEditorModal: React.FC<CheckpointEditorModalProps> = ({
     setOptC(chk.options?.C || "");
     setOptD(chk.options?.D || "");
     setCorrectOption(chk.correct_option || "A");
+    setBloomLevel(chk.bloom_level || "UNDERSTAND");
+    setSourceCitation(chk.source_citation || "");
+    setLoId(chk.lo_id || material?.lo_id || "");
     setTimeLimitSeconds(chk.time_limit_seconds ?? 10);
     setRewindSeconds(chk.rewind_seconds ?? 15);
     setIsBlocking(chk.is_blocking);
@@ -323,6 +363,9 @@ export const CheckpointEditorModal: React.FC<CheckpointEditorModalProps> = ({
         section_index: isVideo ? null : sectionIndex,
         options: { A: optA.trim(), B: optB.trim(), C: optC.trim(), D: optD.trim() },
         correct_option: correctOption,
+        bloom_level: bloomLevel,
+        source_citation: sourceCitation.trim() || null,
+        lo_id: loId || null,
         time_limit_seconds: timeLimitSeconds,
         rewind_seconds: isVideo ? rewindSeconds : 0,
         is_blocking: isBlocking,
@@ -344,6 +387,162 @@ export const CheckpointEditorModal: React.FC<CheckpointEditorModalProps> = ({
       showToast("error", err instanceof ApiError ? err.message : "Không thể lưu điểm dừng.");
     } finally {
       setSaving(false);
+    }
+  };
+
+  const handleSuggestCurrentPage = async () => {
+    if (!material) return;
+    setSuggestingPage(true);
+    try {
+      const suggestion = await learningService.suggestPageCheckpoint(
+        courseId,
+        material.id,
+        sectionIndex,
+        {
+          bloom_level: bloomLevel,
+          lo_id: loId || null,
+        }
+      );
+      setQuestionText(suggestion.question_text);
+      setOptA(suggestion.options?.A || "");
+      setOptB(suggestion.options?.B || "");
+      setOptC(suggestion.options?.C || "");
+      setOptD(suggestion.options?.D || "");
+      setCorrectOption(suggestion.correct_option || "A");
+      setSourceCitation(`${suggestion.citation}: "${suggestion.evidence_quote}"`);
+      showToast("success", `Đã gợi ý câu hỏi từ Trang/Slide ${sectionIndex}!`);
+    } catch (err) {
+      showToast(
+        "error",
+        err instanceof ApiError ? err.message : "Không thể gợi ý câu hỏi cho trang này."
+      );
+    } finally {
+      setSuggestingPage(false);
+    }
+  };
+
+  const handleOpenAiDistribute = () => {
+    if (!material) return;
+    setPanelMode("ai_distribute");
+    setAiLoId(material.lo_id || "");
+    if (sections.length > 0 || scanError) return;
+
+    setLoadingSections(true);
+    setScanError(null);
+    learningService
+      .getMaterialSections(courseId, material.id)
+      .then((res) => {
+        setSections(res.sections);
+        if (res.sections.length > 0) {
+          setSelectedSectionIds(res.sections.map((s) => s.section_id));
+        }
+      })
+      .catch((err) => {
+        setScanError(
+          err instanceof ApiError
+            ? err.message
+            : "Không thể bóc tách cấu trúc chương mục tài liệu."
+        );
+      })
+      .finally(() => setLoadingSections(false));
+  };
+
+  const handleGenerateBatch = async () => {
+    if (!material) return;
+    if (selectedSectionIds.length === 0) {
+      showToast("warning", "Vui lòng tích chọn ít nhất một phân đoạn.");
+      return;
+    }
+    const totalCount = bloomDist.REMEMBER + bloomDist.UNDERSTAND + bloomDist.APPLY;
+    if (totalCount < 1 || totalCount > 10) {
+      showToast("warning", "Tổng số câu hỏi theo ma trận Bloom phải từ 1 đến 10.");
+      return;
+    }
+    const selectedWords = sections
+      .filter((s) => selectedSectionIds.includes(s.section_id))
+      .reduce((acc, s) => acc + s.word_count, 0);
+    if (selectedWords < 100) {
+      showToast(
+        "warning",
+        "Mục được chọn quá ít nội dung thông tin (dưới 100 từ). Vui lòng chọn thêm phân đoạn."
+      );
+      return;
+    }
+
+    setGeneratingAi(true);
+    setAiSuggestions([]);
+    try {
+      const res = await learningService.generateCheckpointSuggestions(
+        courseId,
+        material.id,
+        {
+          section_ids: selectedSectionIds,
+          bloom_level: "UNDERSTAND",
+          bloom_distribution: bloomDist,
+          num_questions: totalCount,
+          lo_id: aiLoId || null,
+        }
+      );
+      setAiSuggestions(res.suggestions);
+      if (res.suggestions.length === 0) {
+        showToast("warning", "AI chưa tạo được câu hỏi có bằng chứng trích dẫn khớp. Vui lòng thử lại.");
+      }
+    } catch (err) {
+      showToast("error", err instanceof ApiError ? err.message : "Lỗi khi sinh câu hỏi AI.");
+    } finally {
+      setGeneratingAi(false);
+    }
+  };
+
+  const toCheckpointPayload = (s: CheckpointSuggestion): CheckpointCreatePayload => ({
+    question_text: s.question_text,
+    question_type: "MULTIPLE_CHOICE",
+    section_index: s.citation_page,
+    options: s.options,
+    correct_option: s.correct_option,
+    expected_concept: s.evidence_quote,
+    bloom_level: s.bloom_level,
+    source_citation: `${s.citation}: "${s.evidence_quote}"`,
+    lo_id: s.lo_id || (aiLoId ? aiLoId : null),
+    is_blocking: true,
+    time_limit_seconds: 15,
+    rewind_seconds: 0,
+  });
+
+  const handleApproveSuggestion = async (s: CheckpointSuggestion) => {
+    if (!material) return;
+    setSavingBatch(true);
+    try {
+      await learningService.batchCreateCheckpoints(courseId, material.id, [
+        toCheckpointPayload(s),
+      ]);
+      setAiSuggestions((prev) => prev.filter((item) => item.temp_id !== s.temp_id));
+      await loadCheckpoints();
+      showToast("success", "Đã thêm thành công câu hỏi vào bài học!");
+    } catch (err) {
+      showToast("error", err instanceof ApiError ? err.message : "Không thể lưu câu hỏi.");
+    } finally {
+      setSavingBatch(false);
+    }
+  };
+
+  const handleApproveAllSuggestions = async () => {
+    if (!material || aiSuggestions.length === 0) return;
+    setSavingBatch(true);
+    try {
+      const res = await learningService.batchCreateCheckpoints(
+        courseId,
+        material.id,
+        aiSuggestions.map(toCheckpointPayload)
+      );
+      setAiSuggestions([]);
+      await loadCheckpoints();
+      setPanelMode("list");
+      showToast("success", `Đã thêm thành công ${res.created_count} câu hỏi vào bài học!`);
+    } catch (err) {
+      showToast("error", err instanceof ApiError ? err.message : "Không thể lưu danh sách câu hỏi.");
+    } finally {
+      setSavingBatch(false);
     }
   };
 
@@ -412,15 +611,96 @@ export const CheckpointEditorModal: React.FC<CheckpointEditorModalProps> = ({
             </div>
           </div>
         ) : (
-          <div className="flex items-center justify-between rounded-lg border border-mm-border bg-mm-bg/60 px-3.5 py-2">
-            <span className="text-xs text-mm-text-muted">Vị trí chèn câu hỏi:</span>
-            <span className="inline-flex items-center gap-1.5 rounded-md bg-amber-500/15 px-2.5 py-1 font-mono text-xs font-bold text-amber-700 dark:text-amber-400">
-              {material?.material_type === "SLIDE"
-                ? `Slide ${sectionIndex}`
-                : material?.material_type === "PDF"
-                ? `Trang ${sectionIndex}`
-                : `Mục ${sectionIndex}`}
-            </span>
+          <div className="space-y-2.5">
+            <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-mm-border bg-mm-bg/60 px-3.5 py-2">
+              <span className="text-xs text-mm-text-muted">Vị trí chèn câu hỏi:</span>
+              <div className="flex items-center gap-2">
+                <span className="inline-flex items-center gap-1.5 rounded-md bg-amber-500/15 px-2.5 py-1 font-mono text-xs font-bold text-amber-700 dark:text-amber-400">
+                  {material?.material_type === "SLIDE"
+                    ? `Slide ${sectionIndex}`
+                    : material?.material_type === "PDF"
+                    ? `Trang ${sectionIndex}`
+                    : `Mục ${sectionIndex}`}
+                </span>
+                {supportsAiDoc && (
+                  <button
+                    type="button"
+                    disabled={suggestingPage}
+                    onClick={handleSuggestCurrentPage}
+                    aria-label={`AI gợi ý câu hỏi cho Trang ${sectionIndex}`}
+                    className="inline-flex items-center gap-1.5 rounded-lg border border-mm-blue-primary/30 bg-mm-blue-light/40 px-2.5 py-1 text-xs font-semibold text-mm-blue-active transition-all duration-150 hover:bg-mm-blue-light/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-mm-blue-primary disabled:opacity-50"
+                  >
+                    {suggestingPage ? (
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    ) : (
+                      <Sparkles className="h-3.5 w-3.5" />
+                    )}
+                    <span>{suggestingPage ? "Đang gợi ý..." : "AI gợi ý trang này"}</span>
+                  </button>
+                )}
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <div>
+                <label
+                  htmlFor="checkpoint-bloom-select"
+                  className="mb-1 block text-xs font-semibold text-mm-heading"
+                >
+                  Mức độ nhận thức (Bloom)
+                </label>
+                <select
+                  id="checkpoint-bloom-select"
+                  value={bloomLevel}
+                  onChange={(e) =>
+                    setBloomLevel(e.target.value as "REMEMBER" | "UNDERSTAND" | "APPLY")
+                  }
+                  className="w-full rounded-lg border border-mm-border bg-mm-surface px-3 py-2 text-xs font-medium text-mm-heading transition-colors focus:border-mm-blue-primary focus:outline-none focus:ring-2 focus:ring-mm-blue-primary/20"
+                >
+                  <option value="REMEMBER">Nhận biết (Định nghĩa, khái niệm)</option>
+                  <option value="UNDERSTAND">Thông hiểu (Nguyên lý, so sánh)</option>
+                  <option value="APPLY">Vận dụng (Tình huống thực tế)</option>
+                </select>
+              </div>
+              <div>
+                <label
+                  htmlFor="checkpoint-lo-select"
+                  className="mb-1 block text-xs font-semibold text-mm-heading"
+                >
+                  Chuẩn đầu ra (LO)
+                </label>
+                <select
+                  id="checkpoint-lo-select"
+                  value={loId}
+                  onChange={(e) => setLoId(e.target.value)}
+                  className="w-full rounded-lg border border-mm-border bg-mm-surface px-3 py-2 text-xs font-medium text-mm-heading transition-colors focus:border-mm-blue-primary focus:outline-none focus:ring-2 focus:ring-mm-blue-primary/20"
+                >
+                  <option value="">-- Không gắn LO --</option>
+                  {availableLos.map((lo) => (
+                    <option key={lo.id} value={lo.id}>
+                      {lo.code} - {lo.description}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            <div>
+              <label
+                htmlFor="checkpoint-citation-input"
+                className="mb-1 block text-xs font-semibold text-mm-heading"
+              >
+                Trích dẫn nguồn (tùy chọn)
+              </label>
+              <input
+                id="checkpoint-citation-input"
+                type="text"
+                value={sourceCitation}
+                onChange={(e) => setSourceCitation(e.target.value)}
+                placeholder={`VD: Trích từ Trang ${sectionIndex}, Đoạn 1...`}
+                className="w-full rounded-lg border border-mm-border bg-mm-surface px-3 py-1.5 text-xs text-mm-text transition-colors focus:border-mm-blue-primary focus:outline-none focus:ring-2 focus:ring-mm-blue-primary/20"
+              />
+            </div>
           </div>
         )}
 
@@ -533,9 +813,305 @@ export const CheckpointEditorModal: React.FC<CheckpointEditorModalProps> = ({
     </form>
   );
 
+  const renderAiDistribute = () => {
+    const totalRequested = bloomDist.REMEMBER + bloomDist.UNDERSTAND + bloomDist.APPLY;
+    const selectedWords = sections
+      .filter((s) => selectedSectionIds.includes(s.section_id))
+      .reduce((acc, s) => acc + s.word_count, 0);
+
+    return (
+      <div className="flex h-full flex-col gap-3">
+        <div className="flex items-center justify-between border-b border-mm-border pb-3">
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setPanelMode("list")}
+              aria-label="Quay lại danh sách điểm dừng"
+              className="inline-flex items-center gap-1 rounded-md border border-mm-border bg-mm-bg px-2.5 py-1 text-xs font-medium text-mm-heading transition-colors hover:bg-mm-btn-secondary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-mm-blue-primary"
+            >
+              <ArrowLeft className="h-3.5 w-3.5" />
+              <span>Danh sách</span>
+            </button>
+            <h4 className="flex items-center gap-1.5 text-sm font-bold text-mm-heading">
+              <Sparkles className="h-4 w-4 text-mm-blue-primary" />
+              <span>Rải câu hỏi AI theo Ma trận Bloom</span>
+            </h4>
+          </div>
+        </div>
+
+        {loadingSections ? (
+          <div className="flex flex-1 flex-col items-center justify-center gap-2 py-12 text-xs text-mm-text-muted">
+            <Loader2 className="h-6 w-6 animate-spin text-mm-blue-primary" />
+            <span>Đang bóc tách phân đoạn tài liệu...</span>
+          </div>
+        ) : scanError ? (
+          <div className="flex flex-1 flex-col items-center justify-center gap-3 rounded-xl border border-mm-border bg-mm-warning-bg/50 p-6 text-center">
+            <AlertTriangle className="h-7 w-7 text-mm-warning" />
+            <p className="text-xs font-medium text-mm-heading">{scanError}</p>
+            <MmButton variant="secondary" size="sm" onClick={() => setPanelMode("list")}>
+              Quay lại
+            </MmButton>
+          </div>
+        ) : (
+          <div className="flex flex-1 flex-col gap-3 overflow-y-auto pr-1">
+            {/* Detected Sections */}
+            <div className="space-y-1.5 rounded-xl border border-mm-border bg-mm-bg p-3">
+              <div className="flex items-center justify-between text-xs font-bold text-mm-heading">
+                <span className="inline-flex items-center gap-1.5">
+                  <BookOpen className="h-3.5 w-3.5 text-mm-blue-primary" />
+                  <span>Chọn phân đoạn ({selectedSectionIds.length}/{sections.length})</span>
+                </span>
+                <span className="font-normal text-mm-text-muted">{selectedWords} từ</span>
+              </div>
+              <div className="max-h-36 space-y-1.5 overflow-y-auto pr-1">
+                {sections.map((sec) => {
+                  const checked = selectedSectionIds.includes(sec.section_id);
+                  return (
+                    <label
+                      key={sec.section_id}
+                      className={`flex cursor-pointer items-start gap-2 rounded-lg border p-2 text-xs transition-all duration-150 ${
+                        checked
+                          ? "border-mm-blue-primary bg-mm-blue-light/25"
+                          : "border-mm-border bg-mm-surface hover:border-mm-blue-400"
+                      }`}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={checked}
+                        onChange={() =>
+                          setSelectedSectionIds((prev) =>
+                            prev.includes(sec.section_id)
+                              ? prev.filter((x) => x !== sec.section_id)
+                              : [...prev, sec.section_id]
+                          )
+                        }
+                        className="mt-0.5 h-3.5 w-3.5 rounded border-mm-border text-mm-blue-primary focus:ring-mm-blue-primary"
+                      />
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center justify-between gap-2 font-semibold text-mm-heading">
+                          <span className="truncate">{sec.title}</span>
+                          <span className="shrink-0 text-[10px] text-mm-text-muted">
+                            {sec.word_count} từ
+                          </span>
+                        </div>
+                        {sec.summary && (
+                          <p className="mt-0.5 line-clamp-2 text-[11px] text-mm-text-secondary">
+                            {sec.summary}
+                          </p>
+                        )}
+                      </div>
+                    </label>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Bloom Distribution Matrix */}
+            <div className="space-y-2.5 rounded-xl border border-mm-border bg-mm-surface p-3">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold text-mm-heading">
+                  Ma trận tỉ lệ Bloom (Tổng: {totalRequested} câu)
+                </span>
+              </div>
+              <div className="grid grid-cols-3 gap-2">
+                <div className="rounded-lg border border-mm-border bg-mm-bg p-2">
+                  <label htmlFor="dist-remember" className="block text-[11px] font-semibold text-mm-text-secondary">
+                    Nhận biết
+                  </label>
+                  <input
+                    id="dist-remember"
+                    type="number"
+                    min={0}
+                    max={10}
+                    value={bloomDist.REMEMBER}
+                    onChange={(e) =>
+                      setBloomDist((prev) => ({
+                        ...prev,
+                        REMEMBER: Math.max(0, Math.min(10, Number(e.target.value))),
+                      }))
+                    }
+                    className="mt-1 w-full rounded border border-mm-border bg-mm-surface px-2 py-1 text-center font-mono text-xs font-bold text-mm-heading focus:border-mm-blue-primary focus:outline-none"
+                  />
+                </div>
+                <div className="rounded-lg border border-mm-border bg-mm-bg p-2">
+                  <label htmlFor="dist-understand" className="block text-[11px] font-semibold text-mm-blue-active">
+                    Thông hiểu
+                  </label>
+                  <input
+                    id="dist-understand"
+                    type="number"
+                    min={0}
+                    max={10}
+                    value={bloomDist.UNDERSTAND}
+                    onChange={(e) =>
+                      setBloomDist((prev) => ({
+                        ...prev,
+                        UNDERSTAND: Math.max(0, Math.min(10, Number(e.target.value))),
+                      }))
+                    }
+                    className="mt-1 w-full rounded border border-mm-border bg-mm-surface px-2 py-1 text-center font-mono text-xs font-bold text-mm-heading focus:border-mm-blue-primary focus:outline-none"
+                  />
+                </div>
+                <div className="rounded-lg border border-mm-border bg-mm-bg p-2">
+                  <label htmlFor="dist-apply" className="block text-[11px] font-semibold text-mm-blue-primary">
+                    Vận dụng
+                  </label>
+                  <input
+                    id="dist-apply"
+                    type="number"
+                    min={0}
+                    max={10}
+                    value={bloomDist.APPLY}
+                    onChange={(e) =>
+                      setBloomDist((prev) => ({
+                        ...prev,
+                        APPLY: Math.max(0, Math.min(10, Number(e.target.value))),
+                      }))
+                    }
+                    className="mt-1 w-full rounded border border-mm-border bg-mm-surface px-2 py-1 text-center font-mono text-xs font-bold text-mm-heading focus:border-mm-blue-primary focus:outline-none"
+                  />
+                </div>
+              </div>
+
+              <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
+                <select
+                  aria-label="Chọn chuẩn đầu ra cho câu hỏi AI"
+                  value={aiLoId}
+                  onChange={(e) => setAiLoId(e.target.value)}
+                  className="min-w-0 flex-1 rounded-lg border border-mm-border bg-mm-surface px-2.5 py-1.5 text-xs text-mm-heading focus:border-mm-blue-primary focus:outline-none"
+                >
+                  <option value="">-- Không gắn LO --</option>
+                  {availableLos.map((lo) => (
+                    <option key={lo.id} value={lo.id}>
+                      {lo.code} - {lo.description}
+                    </option>
+                  ))}
+                </select>
+                <MmButton
+                  type="button"
+                  variant="brand"
+                  size="sm"
+                  disabled={generatingAi || selectedSectionIds.length === 0 || totalRequested < 1}
+                  onClick={handleGenerateBatch}
+                >
+                  {generatingAi ? (
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  ) : (
+                    <Sparkles className="h-3.5 w-3.5" />
+                  )}
+                  <span>{generatingAi ? "Đang tạo..." : "Sinh câu hỏi"}</span>
+                </MmButton>
+              </div>
+            </div>
+
+            {/* AI Suggestions Preview */}
+            {aiSuggestions.length > 0 && (
+              <div className="space-y-2.5">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold text-mm-heading">
+                    Gợi ý sẵn sàng duyệt ({aiSuggestions.length})
+                  </span>
+                  <MmButton
+                    type="button"
+                    variant="brand"
+                    size="sm"
+                    disabled={savingBatch}
+                    onClick={handleApproveAllSuggestions}
+                  >
+                    <CheckCircle2 className="h-3.5 w-3.5" />
+                    <span>Duyệt Tất Cả ({aiSuggestions.length})</span>
+                  </MmButton>
+                </div>
+
+                {aiSuggestions.map((s) => {
+                  const isEditing = editingTempId === s.temp_id;
+                  return (
+                    <div
+                      key={s.temp_id}
+                      className="space-y-2 rounded-xl border border-mm-border bg-mm-surface p-3 shadow-sm transition-all duration-150 hover:border-mm-blue-400"
+                    >
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <div className="flex items-center gap-1.5">
+                          <BloomBadge level={s.bloom_level} />
+                          <span className="rounded bg-amber-500/15 px-1.5 py-0.5 font-mono text-[10px] font-bold text-amber-700">
+                            Trang {s.citation_page}
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-1">
+                          <button
+                            type="button"
+                            onClick={() => setEditingTempId(isEditing ? null : s.temp_id)}
+                            className="inline-flex items-center gap-1 rounded border border-mm-border px-2 py-1 text-[11px] font-medium text-mm-heading transition-colors hover:bg-mm-btn-secondary"
+                          >
+                            <Pencil className="h-3 w-3" />
+                            <span>{isEditing ? "Xong" : "Sửa"}</span>
+                          </button>
+                          <button
+                            type="button"
+                            disabled={savingBatch}
+                            onClick={() => handleApproveSuggestion(s)}
+                            className="inline-flex items-center gap-1 rounded bg-mm-blue-primary px-2.5 py-1 text-[11px] font-semibold text-white transition-colors hover:bg-mm-blue-hover disabled:opacity-50"
+                          >
+                            <Check className="h-3 w-3" />
+                            <span>Duyệt</span>
+                          </button>
+                        </div>
+                      </div>
+
+                      {isEditing ? (
+                        <textarea
+                          value={s.question_text}
+                          onChange={(e) =>
+                            setAiSuggestions((prev) =>
+                              prev.map((item) =>
+                                item.temp_id === s.temp_id
+                                  ? { ...item, question_text: e.target.value }
+                                  : item
+                              )
+                            )
+                          }
+                          rows={2}
+                          className="w-full rounded border border-mm-blue-primary p-1.5 text-xs text-mm-heading"
+                        />
+                      ) : (
+                        <p className="text-xs font-semibold text-mm-heading">{s.question_text}</p>
+                      )}
+
+                      <div className="grid grid-cols-1 gap-1 sm:grid-cols-2">
+                        {(["A", "B", "C", "D"] as const).map((k) => (
+                          <div
+                            key={k}
+                            className={`rounded border px-2 py-1 text-[11px] ${
+                              s.correct_option === k
+                                ? "border-mm-success bg-mm-success-bg font-semibold text-mm-success"
+                                : "border-mm-border bg-mm-bg text-mm-text-secondary"
+                            }`}
+                          >
+                            <strong>{k}.</strong> {s.options[k]}
+                          </div>
+                        ))}
+                      </div>
+
+                      <div className="flex items-start gap-1.5 rounded bg-mm-blue-light/25 px-2 py-1.5 text-[11px] text-mm-blue-deep">
+                        <Quote className="mt-0.5 h-3 w-3 shrink-0 text-mm-blue-primary" />
+                        <span>
+                          <strong>{s.citation}:</strong> <em>"{s.evidence_quote}"</em>
+                        </span>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+    );
+  };
+
   const renderCheckpointsList = () => (
     <div className="flex h-full flex-col">
-      <div className="mb-3 flex items-center justify-between border-b border-mm-border pb-3">
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-2 border-b border-mm-border pb-3">
         <div>
           <h4 className="text-sm font-bold text-mm-heading">
             Câu hỏi trong {isVideo ? "Video" : "Tài liệu"} ({sortedCheckpoints.length})
@@ -546,22 +1122,36 @@ export const CheckpointEditorModal: React.FC<CheckpointEditorModalProps> = ({
               : "Click vào câu hỏi để nhảy tới đúng Trang / Slide / Mục"}
           </p>
         </div>
-        {isVideo ? (
-          <MmButton type="button" size="sm" variant="primary" onClick={handleOpenAddAtCurrentTime}>
-            <Plus className="h-3.5 w-3.5" />
-            <span>Tại {formatTimecode(currentTime)}</span>
-          </MmButton>
-        ) : (
-          <MmButton
-            type="button"
-            size="sm"
-            variant="primary"
-            onClick={() => handleOpenAddAtSection(currentPageIndex)}
-          >
-            <Plus className="h-3.5 w-3.5" />
-            <span>Tại Mục/Trang {currentPageIndex}</span>
-          </MmButton>
-        )}
+        <div className="flex flex-wrap items-center gap-1.5">
+          {supportsAiDoc && (
+            <MmButton
+              type="button"
+              size="sm"
+              variant="secondary"
+              onClick={handleOpenAiDistribute}
+              aria-label="Rải câu hỏi tự động bằng AI theo ma trận Bloom"
+            >
+              <Sparkles className="h-3.5 w-3.5 text-mm-blue-primary" />
+              <span>Rải câu hỏi AI</span>
+            </MmButton>
+          )}
+          {isVideo ? (
+            <MmButton type="button" size="sm" variant="primary" onClick={handleOpenAddAtCurrentTime}>
+              <Plus className="h-3.5 w-3.5" />
+              <span>Tại {formatTimecode(currentTime)}</span>
+            </MmButton>
+          ) : (
+            <MmButton
+              type="button"
+              size="sm"
+              variant="primary"
+              onClick={() => handleOpenAddAtSection(currentPageIndex)}
+            >
+              <Plus className="h-3.5 w-3.5" />
+              <span>Tại Mục/Trang {currentPageIndex}</span>
+            </MmButton>
+          )}
+        </div>
       </div>
 
       <div className="flex-1 space-y-2.5 overflow-y-auto pr-1">
@@ -589,11 +1179,19 @@ export const CheckpointEditorModal: React.FC<CheckpointEditorModalProps> = ({
             return (
               <div
                 key={chk.id}
+                role="button"
+                tabIndex={0}
                 onClick={() => handleSelectCheckpoint(chk)}
-                className={`group cursor-pointer rounded-xl border p-3.5 transition-all ${
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault();
+                    handleSelectCheckpoint(chk);
+                  }
+                }}
+                className={`group cursor-pointer rounded-xl border p-3.5 transition-all duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-mm-blue-primary ${
                   isSelected
                     ? "border-amber-500 bg-amber-500/10 ring-2 ring-amber-500/40"
-                    : "border-mm-border bg-mm-surface hover:border-mm-brand/60 hover:bg-mm-surface-alt"
+                    : "border-mm-border bg-mm-surface hover:border-mm-blue-400 hover:bg-mm-bg"
                 }`}
               >
                 <div className="flex items-start justify-between gap-2">
@@ -607,6 +1205,7 @@ export const CheckpointEditorModal: React.FC<CheckpointEditorModalProps> = ({
                           ? formatTimecode(chk.stop_time_seconds)
                           : `Mục ${chk.section_index ?? 1}`}
                       </span>
+                      {chk.bloom_level && <BloomBadge level={chk.bloom_level} />}
                       <span
                         className={`rounded-md px-2 py-0.5 text-[11px] font-semibold ${
                           chk.is_blocking
@@ -624,6 +1223,12 @@ export const CheckpointEditorModal: React.FC<CheckpointEditorModalProps> = ({
                     <p className="mt-2 text-sm font-medium leading-snug text-mm-heading">
                       {chk.question_text}
                     </p>
+                    {chk.source_citation && (
+                      <p className="mt-1.5 flex items-start gap-1 text-[11px] text-mm-text-secondary">
+                        <Quote className="mt-0.5 h-3 w-3 shrink-0 text-mm-blue-primary" />
+                        <span className="line-clamp-2 italic">{chk.source_citation}</span>
+                      </p>
+                    )}
                   </div>
 
                   <div
@@ -657,16 +1262,21 @@ export const CheckpointEditorModal: React.FC<CheckpointEditorModalProps> = ({
   );
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/75 p-3">
-      <div className="flex h-[90vh] w-[95vw] max-w-7xl flex-col overflow-hidden rounded-2xl border border-mm-border bg-mm-surface shadow-2xl">
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="checkpoint-studio-title"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/75 p-2 sm:p-3"
+    >
+      <div className="flex h-[94vh] w-[96vw] max-w-7xl flex-col overflow-hidden rounded-2xl border border-mm-border bg-mm-surface shadow-2xl lg:h-[90vh]">
         {/* Crisp Solid Header */}
-        <div className="flex items-center justify-between border-b border-mm-border bg-mm-surface px-6 py-3.5">
+        <div className="flex items-center justify-between border-b border-mm-border bg-mm-surface px-4 py-3 sm:px-6 sm:py-3.5">
           <div className="flex items-center gap-3">
             <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-amber-500/15 text-amber-600">
               <BookmarkCheck className="h-5 w-5" />
             </div>
             <div>
-              <h3 className="font-mm-mid text-base font-bold text-mm-heading">
+              <h3 id="checkpoint-studio-title" className="font-mm-mid text-base font-bold text-mm-heading">
                 {isVideo
                   ? "Video Checkpoint Studio (Kéo thả điểm dừng)"
                   : `Biên tập Câu hỏi Tài liệu (${material.material_type})`}
@@ -790,9 +1400,13 @@ export const CheckpointEditorModal: React.FC<CheckpointEditorModalProps> = ({
               />
             </div>
 
-            {/* Right 5 Cols: High-contrast Question List / Editor Form */}
-            <div className="flex flex-col overflow-y-auto border-l border-mm-border bg-mm-surface p-5 lg:col-span-5">
-              {panelMode === "form" ? renderForm() : renderCheckpointsList()}
+            {/* Right 5 Cols: High-contrast Question List / Editor Form / AI Distribute */}
+            <div className="flex flex-col overflow-y-auto border-t border-mm-border bg-mm-surface p-4 sm:p-5 lg:col-span-5 lg:border-l lg:border-t-0">
+              {panelMode === "form"
+                ? renderForm()
+                : panelMode === "ai_distribute"
+                ? renderAiDistribute()
+                : renderCheckpointsList()}
             </div>
           </div>
         ) : (
@@ -875,9 +1489,13 @@ export const CheckpointEditorModal: React.FC<CheckpointEditorModalProps> = ({
               )}
             </div>
 
-            {/* Right 5 Cols: High-contrast Question List / Editor Form */}
-            <div className="flex flex-col overflow-y-auto border-l border-mm-border bg-mm-surface p-5 lg:col-span-5">
-              {panelMode === "form" ? renderForm() : renderCheckpointsList()}
+            {/* Right 5 Cols: High-contrast Question List / Editor Form / AI Distribute */}
+            <div className="flex flex-col overflow-y-auto border-t border-mm-border bg-mm-surface p-4 sm:p-5 lg:col-span-5 lg:border-l lg:border-t-0">
+              {panelMode === "form"
+                ? renderForm()
+                : panelMode === "ai_distribute"
+                ? renderAiDistribute()
+                : renderCheckpointsList()}
             </div>
           </div>
         )}
