@@ -47,6 +47,24 @@ class QuestionBankResponse(BaseModel):
     created_at: datetime
 
 
+class QuestionFolderCreate(BaseModel):
+    """Payload to create a question folder."""
+
+    folder_name: str = Field(..., min_length=1, max_length=100)
+    parent_folder_id: Optional[uuid.UUID] = None
+
+
+class QuestionFolderResponse(BaseModel):
+    """Question folder details."""
+
+    id: uuid.UUID
+    course_id: uuid.UUID
+    folder_name: str
+    parent_folder_id: Optional[uuid.UUID] = None
+    created_by: Optional[uuid.UUID] = None
+    created_at: datetime
+
+
 # ------------------------------------------------------------------
 # Questions
 # ------------------------------------------------------------------
@@ -97,8 +115,11 @@ class QuestionCreate(BaseModel):
     """Payload for POST /api/v1/examinations/courses/{course_id}/questions."""
 
     bank_id: uuid.UUID
+    folder_id: Optional[uuid.UUID] = None
     lo_id: Optional[uuid.UUID] = None
     bloom_level: BloomLevel = BloomLevel.UNDERSTAND
+    difficulty: str = "medium"  # easy, medium, hard
+    source_ref: Optional[str] = None
     question_text: str = Field(..., min_length=3)
     question_type: QuestionType = QuestionType.MULTIPLE_CHOICE
     default_points: Decimal = Field(Decimal("1.00"), gt=0, le=Decimal("99.99"))
@@ -123,8 +144,11 @@ class QuestionUpdate(BaseModel):
     """Payload for PUT /api/v1/examinations/questions/{question_id}."""
 
     bank_id: Optional[uuid.UUID] = None
+    folder_id: Optional[uuid.UUID] = None
     lo_id: Optional[uuid.UUID] = None
     bloom_level: Optional[BloomLevel] = None
+    difficulty: Optional[str] = None
+    source_ref: Optional[str] = None
     question_text: Optional[str] = Field(None, min_length=3)
     question_type: Optional[QuestionType] = None
     default_points: Optional[Decimal] = Field(None, gt=0, le=Decimal("99.99"))
@@ -147,8 +171,11 @@ class QuestionResponse(BaseModel):
 
     id: uuid.UUID
     bank_id: uuid.UUID
+    folder_id: Optional[uuid.UUID] = None
     lo_id: Optional[uuid.UUID] = None
     bloom_level: BloomLevel
+    difficulty: str = "medium"
+    source_ref: Optional[str] = None
     question_text: str
     question_type: QuestionType
     default_points: Decimal
@@ -158,6 +185,46 @@ class QuestionResponse(BaseModel):
     deleted_at: Optional[datetime] = None
     created_at: datetime
     updated_at: datetime
+
+
+# ------------------------------------------------------------------
+# 1-Click Extraction & Draw Rules (TV3 Feature)
+# ------------------------------------------------------------------
+class ExtractedQuestionDraft(BaseModel):
+    """Draft question extracted from DOCX/PDF awaiting instructor confirmation."""
+
+    prompt: str = Field(..., min_length=3)
+    options: List[QuestionOptionSchema] = Field(..., min_length=2)
+    correct_key: str
+    explanation: Optional[str] = None
+    difficulty: str = "medium"
+    confidence_score: float = 1.0
+
+
+class ExtractionPreviewResponse(BaseModel):
+    """Preview of extracted questions for instructor review."""
+
+    filename: str
+    total_extracted: int
+    questions: List[ExtractedQuestionDraft]
+
+
+class ExtractionBatchSaveRequest(BaseModel):
+    """Instructor confirms extracted questions to insert into a bank/folder."""
+
+    bank_id: uuid.UUID
+    folder_id: Optional[uuid.UUID] = None
+    questions: List[ExtractedQuestionDraft]
+
+
+class DrawRuleSchema(BaseModel):
+    """Rule for dynamic random question draw."""
+
+    folder_id: Optional[uuid.UUID] = None
+    bank_id: Optional[uuid.UUID] = None
+    difficulty: Optional[str] = None  # easy, medium, hard, or None for all
+    count: int = Field(..., ge=1, le=500)
+    points_per_question: Decimal = Field(Decimal("1.00"), gt=0)
 
 
 class QuestionDeleteResponse(BaseModel):
@@ -198,6 +265,12 @@ class QuizCreate(BaseModel):
     snapshot_mode: bool = True
     matrix_config: List[QuizMatrixRuleSchema] = Field(default_factory=list)
     question_ids: List[uuid.UUID] = Field(default_factory=list)
+    grade_group_id: Optional[uuid.UUID] = None
+    grade_multiplier: Decimal = Decimal("1.00")
+    selection_mode: str = "manual"  # manual, random_draw
+    draw_rules: List[DrawRuleSchema] = Field(default_factory=list)
+    strict_mode_enabled: bool = False
+    max_strikes: int = 3
 
     @field_validator("title")
     @classmethod
@@ -223,6 +296,12 @@ class QuizSettingsUpdate(BaseModel):
     is_ai_locked: bool = True
     shuffle_questions: bool = True
     shuffle_options: bool = True
+    grade_group_id: Optional[uuid.UUID] = None
+    grade_multiplier: Optional[Decimal] = None
+    selection_mode: Optional[str] = None
+    draw_rules: Optional[List[DrawRuleSchema]] = None
+    strict_mode_enabled: Optional[bool] = None
+    max_strikes: Optional[int] = None
 
 
 class QuizQuestionSnapshotResponse(BaseModel):
@@ -345,6 +424,8 @@ class AutosaveResponse(BaseModel):
     remaining_seconds: int
     tab_blur_count: int
     fullscreen_exit_count: int
+    strike_count: int = 0
+    is_flagged: bool = False
 
 
 class SubmitAttemptRequest(BaseModel):

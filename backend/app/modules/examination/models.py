@@ -24,6 +24,36 @@ import app.modules.course.models  # noqa: F401 - register course.* tables in Bas
 import app.modules.system.models  # noqa: F401 - register identity.users in Base.metadata
 
 
+class QuestionFolder(Base):
+    """Hierarchical folder organization in examination.question_folders."""
+
+    __tablename__ = "question_folders"
+    __table_args__ = ({"schema": "examination"},)
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    course_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("course.courses.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    folder_name = Column(String(100), nullable=False)
+    parent_folder_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("examination.question_folders.id", ondelete="CASCADE"),
+        nullable=True,
+    )
+    created_by = Column(
+        UUID(as_uuid=True),
+        ForeignKey("identity.users.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    created_at = Column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.now(timezone.utc),
+    )
+
+
 class QuestionBank(Base):
     """Categorized question bank container in examination.question_banks."""
 
@@ -59,12 +89,19 @@ class Question(Base):
         ForeignKey("examination.question_banks.id", ondelete="CASCADE"),
         nullable=False,
     )
+    folder_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("examination.question_folders.id", ondelete="SET NULL"),
+        nullable=True,
+    )
     lo_id = Column(
         UUID(as_uuid=True),
         ForeignKey("course.learning_objectives.id", ondelete="SET NULL"),
         nullable=True,
     )
     bloom_level = Column(String(30), nullable=False, default="UNDERSTAND")
+    difficulty = Column(String(20), nullable=False, default="medium")  # easy, medium, hard
+    source_ref = Column(String(100), nullable=True)
     question_text = Column(Text, nullable=False)
     question_type = Column(String(30), nullable=False, default="MULTIPLE_CHOICE")
     default_points = Column(Numeric(4, 2), nullable=False, default=Decimal("1.00"))
@@ -112,6 +149,12 @@ class Quiz(Base):
     status = Column(String(30), nullable=False, default="DRAFT")
     security_mode = Column(String(30), nullable=False, default="CONTROLLED")
     max_attempts = Column(Integer, nullable=False, default=1)
+    grade_group_id = Column(UUID(as_uuid=True), nullable=True)
+    grade_multiplier = Column(Numeric(3, 2), nullable=False, default=Decimal("1.00"))
+    selection_mode = Column(String(20), nullable=False, default="manual")  # manual, random_draw
+    draw_rules_json = Column(JSONB, nullable=False, default=list)
+    strict_mode_enabled = Column(Boolean, nullable=False, default=False)
+    max_strikes = Column(Integer, nullable=False, default=3)
     shuffle_questions = Column(Boolean, nullable=False, default=True)
     shuffle_options = Column(Boolean, nullable=False, default=True)
     snapshot_mode = Column(Boolean, nullable=False, default=True)
@@ -211,7 +254,10 @@ class QuizSubmission(Base):
     client_ip = Column(String(45), nullable=True)
     tab_blur_count = Column(Integer, nullable=False, default=0)
     fullscreen_exit_count = Column(Integer, nullable=False, default=0)
+    strike_count = Column(Integer, nullable=False, default=0)
+    is_flagged = Column(Boolean, nullable=False, default=False)
     violation_logs = Column(JSONB, nullable=False, default=list)
+    violation_logs_json = Column(JSONB, nullable=False, default=list)
     status = Column(String(30), nullable=False, default="IN_PROGRESS")
 
 

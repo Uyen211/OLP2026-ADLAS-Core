@@ -35,6 +35,7 @@ from app.modules.examination.exceptions import (
 from app.modules.examination.models import (
     Question,
     QuestionBank,
+    QuestionFolder,
     Quiz,
     QuizAttemptQuestion,
     QuizQuestion,
@@ -50,12 +51,17 @@ from app.modules.examination.schemas import (
     AttemptStartResponse,
     AutosaveRequest,
     AutosaveResponse,
+    DrawRuleSchema,
+    ExtractionBatchSaveRequest,
+    ExtractionPreviewResponse,
     PasscodeRegenerateResponse,
     PublishGradesResponse,
     QuestionBankCreate,
     QuestionBankResponse,
     QuestionCreate,
     QuestionDeleteResponse,
+    QuestionFolderCreate,
+    QuestionFolderResponse,
     QuestionOptionSchema,
     QuestionResponse,
     QuestionUpdate,
@@ -86,12 +92,15 @@ from app.modules.examination.security_rules import (
     validate_cidr_expression,
     validate_exam_window,
 )
+from app.modules.examination.extractor_service import QuestionExtractorService
 from app.modules.examination.snapshot import (
+    DrawRule,
     MatrixRule,
     build_attempt_question_snapshots,
     build_quiz_question_snapshots,
     normalize_options_snapshot,
     sanitize_options_for_student,
+    select_questions_by_draw_rules,
     select_questions_by_matrix,
 )
 from app.modules.system.models import User
@@ -260,8 +269,11 @@ def _to_question_response(q: Question) -> QuestionResponse:
     return QuestionResponse(
         id=q.id,
         bank_id=q.bank_id,
+        folder_id=q.folder_id,
         lo_id=q.lo_id,
         bloom_level=BloomLevel(q.bloom_level),
+        difficulty=q.difficulty or "medium",
+        source_ref=q.source_ref,
         question_text=q.question_text,
         question_type=QuestionType(q.question_type),
         default_points=q.default_points,
@@ -383,6 +395,112 @@ class ExaminationService:
             )
 
     # ------------------------------------------------------------------
+    # Question Folders (TV3 Feature)
+    # ------------------------------------------------------------------
+    async def create_question_folder(
+        self,
+        course_id: uuid.UUID,
+        payload: QuestionFolderCreate,
+        actor: User,
+    ) -> QuestionFolderResponse:
+        await self._assert_instructor(course_id, actor)
+        folder = QuestionFolder(
+            course_id=course_id,
+            folder_name=payload.folder_name,
+            parent_folder_id=payload.parent_folder_id,
+            created_by=actor.id,
+        )
+        await self.repo.create_question_folder(folder)
+        return QuestionFolderResponse(
+            id=folder.id,
+            course_id=folder.course_id,
+            folder_name=folder.folder_name,
+            parent_folder_id=folder.parent_folder_id,
+            created_by=folder.created_by,
+            created_at=folder.created_at,
+        )
+
+    async def list_question_folders(
+        self,
+        course_id: uuid.UUID,
+        actor: User,
+    ) -> List[QuestionFolderResponse]:
+        await self._assert_instructor(course_id, actor)
+        folders = await self.repo.list_question_folders_by_course(course_id)
+        return [
+            QuestionFolderResponse(
+                id=f.id,
+                course_id=f.course_id,
+                folder_name=f.folder_name,
+                parent_folder_id=f.parent_folder_id,
+                created_by=f.created_by,
+                created_at=f.created_at,
+            )
+            for f in folders
+        ]
+
+    async def delete_question_folder(
+        self,
+        folder_id: uuid.UUID,
+        actor: User,
+    ) -> None:
+        folder = await self.repo.get_question_folder_by_id(folder_id)
+        if folder is None:
+            raise ExaminationNotFoundException("Khong tim thay thu muc cau hoi.")
+        await self._assert_instructor(folder.course_id, actor)
+        await self.repo.delete_question_folder(folder)
+
+    # ------------------------------------------------------------------
+    # 1-Click Extraction & Batch Save (TV3 Feature)
+    # ------------------------------------------------------------------
+    def preview_extract_from_text(self, text: str, filename: str = "document.txt") -> ExtractionPreviewResponse:
+        return QuestionExtractorService().extract_from_text(text, filename=filename)
+
+    def preview_extract_from_bytes(self, content_bytes: bytes, filename: str) -> ExtractionPreviewResponse:
+        service = QuestionExtractorService()
+        if filename.lower().endswith(".docx"):
+            return service.extract_from_docx_bytes(content_bytes, filename=filename)
+        elif filename.lower().endswith(".pdf"):
+            return service.extract_from_pdf_bytes(content_bytes, filename=filename)
+        else:
+            return service.extract_from_text(content_bytes.decode("utf-8", errors="ignore"), filename=filename)
+
+    async def batch_save_extracted_questions(
+        self,
+        course_id: uuid.UUID,
+        payload: ExtractionBatchSaveRequest,
+        actor: User,
+    ) -> List[QuestionResponse]:
+        await self._assert_instructor(course_id, actor)
+        bank = await self.repo.get_question_bank_by_id(payload.bank_id)
+        if bank is None or bank.course_id != course_id:
+            raise ExaminationNotFoundException("Danh muc ngan hang cau hoi khong thuoc mon hoc nay.")
+
+        now = datetime.now(timezone.utc)
+        created_questions: List[Question] = []
+        for draft in payload.questions:
+            serialized_options = _serialize_options(draft.options)
+            q = Question(
+                bank_id=payload.bank_id,
+                folder_id=payload.folder_id,
+                bloom_level="UNDERSTAND",
+                difficulty=draft.difficulty,
+                source_ref="1-Click Extract",
+                question_text=draft.prompt,
+                question_type="MULTIPLE_CHOICE",
+                default_points=Decimal("1.00"),
+                options=serialized_options,
+                explanation=draft.explanation,
+                is_active=True,
+                created_at=now,
+                updated_at=now,
+            )
+            await self.repo.create_question(q)
+            created_questions.append(q)
+
+        return [_to_question_response(q) for q in created_questions]
+
+    # ------------------------------------------------------------------
     # Question Banks (T2-P-M4-01)
     # ------------------------------------------------------------------
     async def list_question_banks(
@@ -476,8 +594,11 @@ class ExaminationService:
         now = datetime.now(timezone.utc)
         question = Question(
             bank_id=payload.bank_id,
+            folder_id=payload.folder_id,
             lo_id=payload.lo_id,
             bloom_level=payload.bloom_level.value,
+            difficulty=payload.difficulty,
+            source_ref=payload.source_ref,
             question_text=payload.question_text,
             question_type=payload.question_type.value,
             default_points=payload.default_points,
@@ -588,6 +709,31 @@ class ExaminationService:
     # ------------------------------------------------------------------
     # Quizzes, Tier-1 Snapshots & Security Room Settings (T2-P-M4-01..02)
     # ------------------------------------------------------------------
+    async def _draw_questions_from_draw_rules(
+        self,
+        course_id: uuid.UUID,
+        draw_rules_schema: List[DrawRuleSchema],
+    ) -> List[Question]:
+        rules: List[DrawRule] = []
+        pools: List[List[Question]] = []
+        for item in draw_rules_schema:
+            pool = await self.repo.list_questions_for_draw_rule(
+                course_id=course_id,
+                folder_id=item.folder_id,
+                bank_id=item.bank_id,
+                difficulty=item.difficulty,
+            )
+            rules.append(
+                DrawRule(
+                    count=item.count,
+                    folder_id=item.folder_id,
+                    bank_id=item.bank_id,
+                    difficulty=item.difficulty,
+                )
+            )
+            pools.append(pool)
+        return select_questions_by_draw_rules(rules, pools)
+
     async def _draw_questions_from_matrix(
         self,
         course_id: uuid.UUID,
@@ -685,7 +831,12 @@ class ExaminationService:
         normalized_cidr = validate_cidr_expression(payload.ip_filter_range)
 
         selected_questions: List[Question] = []
-        if payload.matrix_config:
+        if payload.selection_mode == "random_draw" and payload.draw_rules:
+            selected_questions = await self._draw_questions_from_draw_rules(
+                course_id,
+                payload.draw_rules,
+            )
+        elif payload.matrix_config:
             selected_questions = await self._draw_questions_from_matrix(
                 course_id,
                 payload.matrix_config,
@@ -705,6 +856,16 @@ class ExaminationService:
             }
             for rule in payload.matrix_config
         ]
+        draw_rules_json = [
+            {
+                "folder_id": str(r.folder_id) if r.folder_id else None,
+                "bank_id": str(r.bank_id) if r.bank_id else None,
+                "difficulty": r.difficulty,
+                "count": r.count,
+                "points_per_question": float(r.points_per_question),
+            }
+            for r in payload.draw_rules
+        ]
 
         now = datetime.now(timezone.utc)
         passcode_clean = payload.passcode.strip() if payload.passcode else None
@@ -721,6 +882,12 @@ class ExaminationService:
             status=QuizStatus.DRAFT.value,
             security_mode=payload.security_mode.value,
             max_attempts=payload.max_attempts,
+            grade_group_id=payload.grade_group_id,
+            grade_multiplier=payload.grade_multiplier,
+            selection_mode=payload.selection_mode,
+            draw_rules_json=draw_rules_json,
+            strict_mode_enabled=payload.strict_mode_enabled,
+            max_strikes=payload.max_strikes,
             shuffle_questions=payload.shuffle_questions,
             shuffle_options=payload.shuffle_options,
             snapshot_mode=payload.snapshot_mode,

@@ -27,6 +27,62 @@ class MatrixRule:
     lo_id: Optional[uuid.UUID] = None
 
 
+@dataclass(frozen=True)
+class DrawRule:
+    """Folder and difficulty based rule for dynamic exam draw."""
+
+    count: int
+    folder_id: Optional[uuid.UUID] = None
+    bank_id: Optional[uuid.UUID] = None
+    difficulty: Optional[str] = None
+
+
+def select_questions_by_draw_rules(
+    draw_rules: Sequence[DrawRule],
+    candidate_pools: Sequence[Sequence[T]],
+    rng: Optional[random.Random] = None,
+) -> List[T]:
+    """
+    Randomly draw questions matching each (draw_rule, candidate_pool) pair without duplicates.
+    Raises InsufficientQuestionsException (E-EXAM-03) if any rule lacks enough active questions.
+    """
+    if len(draw_rules) != len(candidate_pools):
+        raise ValueError("draw_rules and candidate_pools must have equal length.")
+
+    generator = rng or _SYSTEM_RNG
+    selected: List[T] = []
+    seen_ids: Set[Any] = set()
+
+    for rule, pool in zip(draw_rules, candidate_pools):
+        if rule.count <= 0:
+            continue
+        available = []
+        for item in pool:
+            item_id = getattr(item, "id", None)
+            if item_id is not None and item_id in seen_ids:
+                continue
+            available.append(item)
+
+        if len(available) < rule.count:
+            raise InsufficientQuestionsException(
+                detail=(
+                    f"Ngan hang/thu muc khong du cau hoi (can {rule.count}, "
+                    f"chi co {len(available)} cau hop le)."
+                ),
+                requested=rule.count,
+                available=len(available),
+            )
+
+        picked = generator.sample(available, rule.count)
+        for item in picked:
+            item_id = getattr(item, "id", None)
+            if item_id is not None:
+                seen_ids.add(item_id)
+            selected.append(item)
+
+    return selected
+
+
 def select_questions_by_matrix(
     matrix_rules: Sequence[MatrixRule],
     candidate_pools: Sequence[Sequence[T]],

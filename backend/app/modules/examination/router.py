@@ -3,9 +3,9 @@
 
 """REST API router for Examination Context (T2-P-M4-01 & T2-P-M4-02)."""
 
-from typing import List, Optional
+from typing import Dict, List, Optional
 import uuid
-from fastapi import APIRouter, Depends, Query, Request, Response, status
+from fastapi import APIRouter, Depends, File, Query, Request, Response, UploadFile, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.database import get_db
 from app.modules.examination.schemas import (
@@ -15,12 +15,16 @@ from app.modules.examination.schemas import (
     AttemptStartResponse,
     AutosaveRequest,
     AutosaveResponse,
+    ExtractionBatchSaveRequest,
+    ExtractionPreviewResponse,
     PasscodeRegenerateResponse,
     PublishGradesResponse,
     QuestionBankCreate,
     QuestionBankResponse,
     QuestionCreate,
     QuestionDeleteResponse,
+    QuestionFolderCreate,
+    QuestionFolderResponse,
     QuestionResponse,
     QuestionUpdate,
     QuizCreate,
@@ -47,6 +51,93 @@ def _extract_client_ip(request: Request) -> Optional[str]:
     if request.client:
         return request.client.host
     return None
+
+
+# ------------------------------------------------------------------
+# Question Folders (TV3 Feature)
+# ------------------------------------------------------------------
+@router.get(
+    "/courses/{course_id}/folders",
+    response_model=List[QuestionFolderResponse],
+)
+async def list_question_folders(
+    course_id: uuid.UUID,
+    current: CurrentUser = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> List[QuestionFolderResponse]:
+    return await ExaminationService(db).list_question_folders(course_id, current.user)
+
+
+@router.post(
+    "/courses/{course_id}/folders",
+    response_model=QuestionFolderResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+async def create_question_folder(
+    course_id: uuid.UUID,
+    payload: QuestionFolderCreate,
+    current: CurrentUser = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> QuestionFolderResponse:
+    return await ExaminationService(db).create_question_folder(course_id, payload, current.user)
+
+
+@router.delete(
+    "/folders/{folder_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+async def delete_question_folder(
+    folder_id: uuid.UUID,
+    current: CurrentUser = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> Response:
+    await ExaminationService(db).delete_question_folder(folder_id, current.user)
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+# ------------------------------------------------------------------
+# 1-Click Extraction (TV3 Feature)
+# ------------------------------------------------------------------
+@router.post(
+    "/courses/{course_id}/extract-text",
+    response_model=ExtractionPreviewResponse,
+)
+async def extract_questions_from_text(
+    course_id: uuid.UUID,
+    body: Dict[str, str],
+    current: CurrentUser = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> ExtractionPreviewResponse:
+    text = body.get("text", "")
+    return ExaminationService(db).preview_extract_from_text(text)
+
+
+@router.post(
+    "/courses/{course_id}/extract-upload",
+    response_model=ExtractionPreviewResponse,
+)
+async def extract_questions_from_upload(
+    course_id: uuid.UUID,
+    file: UploadFile = File(...),
+    current: CurrentUser = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> ExtractionPreviewResponse:
+    content = await file.read()
+    return ExaminationService(db).preview_extract_from_bytes(content, filename=file.filename or "file.txt")
+
+
+@router.post(
+    "/courses/{course_id}/batch-save-questions",
+    response_model=List[QuestionResponse],
+    status_code=status.HTTP_201_CREATED,
+)
+async def batch_save_questions(
+    course_id: uuid.UUID,
+    payload: ExtractionBatchSaveRequest,
+    current: CurrentUser = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> List[QuestionResponse]:
+    return await ExaminationService(db).batch_save_extracted_questions(course_id, payload, current.user)
 
 
 # ------------------------------------------------------------------

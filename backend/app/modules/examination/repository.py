@@ -13,6 +13,7 @@ from app.modules.examination.enums import RegradeStatus, SubmissionStatus
 from app.modules.examination.models import (
     Question,
     QuestionBank,
+    QuestionFolder,
     Quiz,
     QuizAttemptQuestion,
     QuizQuestion,
@@ -27,6 +28,57 @@ class ExaminationRepository:
 
     def __init__(self, db: AsyncSession):
         self.db = db
+
+    # ------------------------------------------------------------------
+    # Question Folders (TV3 Feature)
+    # ------------------------------------------------------------------
+    async def create_question_folder(self, folder: QuestionFolder) -> QuestionFolder:
+        self.db.add(folder)
+        await self.db.flush()
+        return folder
+
+    async def get_question_folder_by_id(self, folder_id: uuid.UUID) -> Optional[QuestionFolder]:
+        stmt = select(QuestionFolder).where(QuestionFolder.id == folder_id)
+        res = await self.db.execute(stmt)
+        return res.scalar_one_or_none()
+
+    async def list_question_folders_by_course(self, course_id: uuid.UUID) -> List[QuestionFolder]:
+        stmt = (
+            select(QuestionFolder)
+            .where(QuestionFolder.course_id == course_id)
+            .order_by(QuestionFolder.created_at.asc())
+        )
+        res = await self.db.execute(stmt)
+        return list(res.scalars().all())
+
+    async def delete_question_folder(self, folder: QuestionFolder) -> None:
+        await self.db.delete(folder)
+        await self.db.flush()
+
+    async def list_questions_for_draw_rule(
+        self,
+        course_id: uuid.UUID,
+        folder_id: Optional[uuid.UUID] = None,
+        bank_id: Optional[uuid.UUID] = None,
+        difficulty: Optional[str] = None,
+    ) -> List[Question]:
+        stmt = (
+            select(Question)
+            .join(QuestionBank, QuestionBank.id == Question.bank_id)
+            .where(
+                QuestionBank.course_id == course_id,
+                Question.is_active.is_(True),
+            )
+        )
+        if folder_id is not None:
+            stmt = stmt.where(Question.folder_id == folder_id)
+        if bank_id is not None:
+            stmt = stmt.where(Question.bank_id == bank_id)
+        if difficulty is not None:
+            stmt = stmt.where(Question.difficulty == difficulty)
+
+        res = await self.db.execute(stmt)
+        return list(res.scalars().all())
 
     # ------------------------------------------------------------------
     # Question Banks

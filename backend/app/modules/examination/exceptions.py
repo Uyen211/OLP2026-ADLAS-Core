@@ -157,3 +157,30 @@ class ExaminationStateException(ADLASException):
             detail=detail,
             status_code=status.HTTP_409_CONFLICT,
         )
+
+
+class QuestionFolderNotFoundException(ADLASException):
+    def __init__(self, folder_id: str):
+        super().__init__(
+            code="E-FLD-01",
+            detail=f"Thu muc cau hoi '{folder_id}' khong ton tai.",
+            status_code=status.HTTP_404_NOT_FOUND,
+        )
+
+
+class QuestionExtractionFailedException(ADLASException):
+    def __init__(self, message: str = "Khong the trich xuat cau hoi tu tep tin tai len."):
+        super().__init__(
+            code="E-EXT-01",
+            detail=message,
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+        )
+
+
+class ExamStrictViolationException(ADLASException):
+    def __init__(self, strike_count: int, max_strikes: int = 3):
+        super().__init__(
+            code="E-STRICT-01",
+            detail=f"Vi pham quy che thi ({strike_count}/{max_strikes} lan vi pham). Bai thi da bi gan co de kiem tra.",
+            status_code=status.HTTP_400_BAD_REQUEST,
+        )
