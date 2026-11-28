@@ -13,14 +13,19 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.database import get_db
 from app.modules.identity.dependencies import CurrentUser, get_current_user
 from app.modules.learning.schemas import (
+    BatchCheckpointCreateRequest,
+    BatchCheckpointCreateResponse,
     CheckpointCreate,
     CheckpointInstructorResponse,
     CheckpointStudentResponse,
     CheckpointSubmitRequest,
     CheckpointSubmitResponse,
+    CheckpointSuggestionsResponse,
     CheckpointUpdate,
+    GenerateCheckpointSuggestionsRequest,
     MaterialCreate,
     MaterialResponse,
+    MaterialSectionsResponse,
     MaterialStructuredContentResponse,
     MaterialUpdate,
     MaterialUploadResponse,
@@ -504,6 +509,74 @@ async def submit_checkpoint_answer(
     return await service.submit_checkpoint(
         course_id=course_id,
         checkpoint_id=checkpoint_id,
+        payload=payload,
+        user_id=current_user.user.id,
+        is_admin=_is_admin(current_user),
+    )
+
+
+# -----------------------------------------------------------------------------
+# AI Section Extraction & Grounded Checkpoint Routes (Task T2-I-M2-04)
+# -----------------------------------------------------------------------------
+@router.get(
+    "/materials/{material_id}/sections",
+    response_model=MaterialSectionsResponse,
+)
+async def get_material_sections(
+    course_id: uuid.UUID,
+    material_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: CurrentUser = Depends(get_current_user),
+):
+    """Extract or return cached hierarchical sections for a PDF/PPTX material."""
+    service = LearningCheckpointService(db)
+    return await service.get_material_sections(
+        course_id=course_id,
+        material_id=material_id,
+        user_id=current_user.user.id,
+        is_admin=_is_admin(current_user),
+    )
+
+
+@router.post(
+    "/materials/{material_id}/generate-checkpoint-suggestions",
+    response_model=CheckpointSuggestionsResponse,
+)
+async def generate_checkpoint_suggestions(
+    course_id: uuid.UUID,
+    material_id: uuid.UUID,
+    payload: GenerateCheckpointSuggestionsRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: CurrentUser = Depends(get_current_user),
+):
+    """Generate grounded MCQ checkpoint suggestions from selected sections."""
+    service = LearningCheckpointService(db)
+    return await service.generate_checkpoint_suggestions(
+        course_id=course_id,
+        material_id=material_id,
+        payload=payload,
+        user_id=current_user.user.id,
+        is_admin=_is_admin(current_user),
+    )
+
+
+@router.post(
+    "/materials/{material_id}/batch-checkpoints",
+    response_model=BatchCheckpointCreateResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+async def batch_create_checkpoints(
+    course_id: uuid.UUID,
+    material_id: uuid.UUID,
+    payload: BatchCheckpointCreateRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: CurrentUser = Depends(get_current_user),
+):
+    """Save multiple instructor-approved AI checkpoints in 1 click."""
+    service = LearningCheckpointService(db)
+    return await service.batch_create_checkpoints(
+        course_id=course_id,
+        material_id=material_id,
         payload=payload,
         user_id=current_user.user.id,
         is_admin=_is_admin(current_user),

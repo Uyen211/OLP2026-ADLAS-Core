@@ -365,3 +365,48 @@ You are a strict university oral defense examiner. Based ONLY on <submission_sum
                 "category": cat,
             })
         return questions
+
+    async def generate_grounded_checkpoints(
+        self,
+        indexed_context: str,
+        bloom_level: str,
+        num_questions: int,
+        lo_hint: str = "",
+    ) -> List[Dict[str, Any]]:
+        """
+        Generate grounded multiple-choice checkpoint questions strictly from
+        <document_section>...</document_section> with explicit page/paragraph citations.
+        """
+        bloom_guides = {
+            "REMEMBER": "Nhận biết (kiểm tra định nghĩa, khái niệm cơ bản, thuật ngữ).",
+            "UNDERSTAND": "Thông hiểu (giải thích nguyên lý, ý nghĩa, so sánh cơ chế).",
+            "APPLY": "Vận dụng (tình huống thực tế, phân tích vấn đề, áp dụng kiến thức).",
+        }
+        bloom_desc = bloom_guides.get(bloom_level.upper(), bloom_guides["UNDERSTAND"])
+        lo_clause = f"Chuẩn đầu ra (LO) cần bám sát: {lo_hint}.\n" if lo_hint else ""
+
+        prompt = (
+            f"<document_section>\n{indexed_context}\n</document_section>\n\n"
+            f"=== CHỈ DẪN TẠO CÂU HỎI TRẮC NGHIỆM (T2-I-M2-04) ===\n"
+            f"Hãy đọc kỹ các đoạn văn bản có gắn nhãn [Trang X, Đoạn Y] trong thẻ <document_section> ở trên.\n"
+            f"Tạo đúng {num_questions} câu hỏi trắc nghiệm 4 đáp án (A, B, C, D) bằng tiếng Việt.\n"
+            f"- Mức độ nhận thức Bloom: {bloom_level} — {bloom_desc}\n"
+            f"{lo_clause}"
+            f"- Yêu cầu chống ảo giác: Chỉ sử dụng thông tin có thật trong <document_section>. "
+            f"Mỗi câu hỏi BẮT BUỘC phải trích dẫn đúng số trang, số đoạn và chép nguyên văn 1 câu bằng chứng (evidence_quote) từ đoạn đó.\n"
+            f"Trả về JSON array, mỗi phần tử có cấu trúc chính xác:\n"
+            '{"question_text": "...", "options": {"A": "...", "B": "...", "C": "...", "D": "..."}, '
+            '"correct_option": "A", "citation_page": 1, "citation_paragraph": 1, "evidence_quote": "..."}'
+        )
+        raw = await self._call_gemini_raw(
+            prompt, response_mime_type="application/json", temperature=0.2
+        )
+        if not raw:
+            return []
+        try:
+            parsed = json.loads(raw)
+            if isinstance(parsed, list):
+                return [item for item in parsed if isinstance(item, dict)]
+        except Exception as exc:
+            logger.warning("Failed to parse grounded checkpoints JSON: %s", exc)
+        return []

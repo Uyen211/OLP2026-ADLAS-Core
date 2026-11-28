@@ -21,25 +21,36 @@ from app.modules.learning.exceptions import (
     MaterialQuotaExceededException,
     ModuleCircularDependencyException,
     ModuleLockedException,
+    NoTextLayerException,
+    SectionTooShortException,
     UncompletedCheckpointsException,
 )
 from app.modules.learning.models import LearningMaterial, LearningModule, MaterialCheckpoint
 from app.modules.learning.repository import LearningRepository
 from app.modules.learning.schemas import (
+    BatchCheckpointCreateRequest,
+    BatchCheckpointCreateResponse,
     CheckpointCreate,
     CheckpointInstructorResponse,
     CheckpointStudentResponse,
     CheckpointSubmitRequest,
     CheckpointSubmitResponse,
+    CheckpointSuggestionItem,
+    CheckpointSuggestionsResponse,
     CheckpointUpdate,
+    GenerateCheckpointSuggestionsRequest,
     MaterialCreate,
     MaterialResponse,
+    MaterialSectionsResponse,
     MaterialUpdate,
     MaterialUploadResponse,
     ModuleCreate,
     ModuleResponse,
     ModuleUpdate,
+    SectionItem,
 )
+from app.modules.learning.section_extractor import SectionExtractor
+from app.modules.ai_gateway.service import AIGatewayService
 from app.modules.system.storage_service import StorageAdminService
 
 
@@ -542,6 +553,8 @@ class LearningMaterialService:
                     raise LearningMaterialNotFoundException("Chuẩn đầu ra không tồn tại trong môn học.")
             mat.lo_id = payload.lo_id
         if "file_url" in fields_set:
+            if payload.file_url != mat.file_url:
+                mat.sections_cache = None
             mat.file_url = payload.file_url
         if payload.is_mandatory is not None:
             mat.is_mandatory = payload.is_mandatory
@@ -1231,4 +1244,244 @@ class LearningCheckpointService:
             is_passed=attempt.is_correct,
             rewind_seconds=0 if is_correct else chk.rewind_seconds,
             message=msg,
+        )
+
+    @staticmethod
+    def _normalize_text(text: str) -> str:
+        return " ".join((text or "").lower().split())
+
+    @classmethod
+    def _verify_and_resolve_citation(
+        cls,
+        evidence_quote: str,
+        claimed_page: int,
+        claimed_para: int,
+        section_paragraphs: list,
+    ) -> Optional[tuple[int, int, str]]:
+        """Verify evidence_quote against extracted paragraphs to prevent hallucination (BR-RAG-01)."""
+        norm_quote = cls._normalize_text(evidence_quote)
+        if not norm_quote or len(norm_quote) < 10:
+            return None
+
+        # 1. Exact/substring match on claimed (page, paragraph)
+        for p in section_paragraphs:
+            if p.page == claimed_page and p.paragraph == claimed_para:
+                if norm_quote in cls._normalize_text(p.text):
+                    return (p.page, p.paragraph, evidence_quote.strip())
+
+        # 2. Fallback: search across all paragraphs in the selected sections
+        for p in section_paragraphs:
+            if norm_quote in cls._normalize_text(p.text):
+                return (p.page, p.paragraph, evidence_quote.strip())
+
+        # 3. Partial prefix/word overlap check (>= 60% consecutive words)
+        q_words = norm_quote.split()
+        if len(q_words) >= 6:
+            probe = " ".join(q_words[:6])
+            for p in section_paragraphs:
+                if probe in cls._normalize_text(p.text):
+                    return (p.page, p.paragraph, evidence_quote.strip())
+
+        return None
+
+    async def get_material_sections(
+        self,
+        course_id: uuid.UUID,
+        material_id: uuid.UUID,
+        user_id: uuid.UUID,
+        is_admin: bool = False,
+    ) -> MaterialSectionsResponse:
+        """Extract or return cached hierarchical sections for a PDF/PPTX material (T2-I-M2-04)."""
+        await self.course_service.assert_course_role(
+            course_id=course_id,
+            user_id=user_id,
+            allowed_roles=[ContextualRole.INSTRUCTOR],
+            is_admin=is_admin,
+        )
+        mat = await self._get_material_in_course(course_id, material_id)
+        mat_service = LearningMaterialService(self.db, repo=self.repo)
+        file_path = await mat_service.get_material_file_path(
+            course_id=course_id,
+            material_id=material_id,
+            user_id=user_id,
+            is_admin=is_admin,
+        )
+
+        extractor = SectionExtractor()
+        doc = extractor.extract_document(file_path)
+
+        if mat.sections_cache and isinstance(mat.sections_cache, list):
+            sections = [SectionItem(**s) for s in mat.sections_cache]
+            return MaterialSectionsResponse(
+                material_id=mat.id,
+                total_pages=doc.total_pages,
+                sections=sections,
+            )
+
+        raw_sections = await extractor.build_sections(doc, ai_gateway=AIGatewayService())
+        mat.sections_cache = raw_sections
+        await self.repo.update_material(mat)
+
+        return MaterialSectionsResponse(
+            material_id=mat.id,
+            total_pages=doc.total_pages,
+            sections=[SectionItem(**s) for s in raw_sections],
+        )
+
+    async def generate_checkpoint_suggestions(
+        self,
+        course_id: uuid.UUID,
+        material_id: uuid.UUID,
+        payload: GenerateCheckpointSuggestionsRequest,
+        user_id: uuid.UUID,
+        is_admin: bool = False,
+    ) -> CheckpointSuggestionsResponse:
+        """Generate grounded MCQ suggestions from selected sections with citation verification."""
+        await self.course_service.assert_course_role(
+            course_id=course_id,
+            user_id=user_id,
+            allowed_roles=[ContextualRole.INSTRUCTOR],
+            is_admin=is_admin,
+        )
+        mat = await self._get_material_in_course(course_id, material_id)
+
+        lo_hint = ""
+        if payload.lo_id is not None:
+            los = await self.course_service.get_learning_objectives(course_id)
+            matching_lo = next((lo for lo in los if lo.id == payload.lo_id), None)
+            if not matching_lo:
+                raise LearningMaterialNotFoundException("Chuẩn đầu ra không tồn tại trong môn học.")
+            lo_hint = f"{matching_lo.code}: {matching_lo.description}"
+
+        sections_resp = await self.get_material_sections(
+            course_id=course_id,
+            material_id=material_id,
+            user_id=user_id,
+            is_admin=is_admin,
+        )
+        selected_ids = set(payload.section_ids)
+        selected_sections = [s for s in sections_resp.sections if s.section_id in selected_ids]
+        if not selected_sections:
+            raise SectionTooShortException("Không tìm thấy phân đoạn đã chọn.")
+
+        total_words = sum(s.word_count for s in selected_sections)
+        if total_words < 100:
+            raise SectionTooShortException()
+
+        mat_service = LearningMaterialService(self.db, repo=self.repo)
+        file_path = await mat_service.get_material_file_path(
+            course_id=course_id,
+            material_id=material_id,
+            user_id=user_id,
+            is_admin=is_admin,
+        )
+        doc = SectionExtractor().extract_document(file_path)
+
+        page_ranges = [(s.start_page, s.end_page) for s in selected_sections]
+        section_paragraphs = [
+            p
+            for p in doc.paragraphs
+            if any(sp <= p.page <= ep for sp, ep in page_ranges)
+        ]
+
+        indexed_lines = [
+            f"[Trang {p.page}, Đoạn {p.paragraph}] {p.text}"
+            for p in section_paragraphs
+        ]
+        indexed_context = "\n".join(indexed_lines)
+
+        ai_gateway = AIGatewayService()
+        raw_items = await ai_gateway.generate_grounded_checkpoints(
+            indexed_context=indexed_context,
+            bloom_level=payload.bloom_level.value,
+            num_questions=payload.num_questions,
+            lo_hint=lo_hint,
+        )
+
+        suggestions: List[CheckpointSuggestionItem] = []
+        for idx, item in enumerate(raw_items, start=1):
+            q_text = str(item.get("question_text") or "").strip()
+            options = item.get("options") or {}
+            correct = str(item.get("correct_option") or "A").strip().upper()
+            quote = str(item.get("evidence_quote") or "").strip()
+            c_page = int(item.get("citation_page") or selected_sections[0].start_page)
+            c_para = int(item.get("citation_paragraph") or 1)
+
+            if not q_text or not isinstance(options, dict) or len(options) < 4:
+                continue
+
+            verified = self._verify_and_resolve_citation(
+                evidence_quote=quote,
+                claimed_page=c_page,
+                claimed_para=c_para,
+                section_paragraphs=section_paragraphs,
+            )
+            if not verified:
+                continue
+
+            v_page, v_para, v_quote = verified
+            suggestions.append(
+                CheckpointSuggestionItem(
+                    temp_id=f"temp-{idx}",
+                    question_text=q_text,
+                    options=options,
+                    correct_option=correct,
+                    bloom_level=payload.bloom_level,
+                    lo_id=payload.lo_id,
+                    citation_page=v_page,
+                    citation_paragraph=v_para,
+                    citation=f"Trích từ Trang {v_page}, Đoạn {v_para}",
+                    evidence_quote=v_quote,
+                )
+            )
+
+        return CheckpointSuggestionsResponse(suggestions=suggestions)
+
+    async def batch_create_checkpoints(
+        self,
+        course_id: uuid.UUID,
+        material_id: uuid.UUID,
+        payload: BatchCheckpointCreateRequest,
+        user_id: uuid.UUID,
+        is_admin: bool = False,
+    ) -> BatchCheckpointCreateResponse:
+        """Save multiple instructor-approved AI checkpoints in 1 click (BR-RAG-02)."""
+        await self.course_service.assert_course_role(
+            course_id=course_id,
+            user_id=user_id,
+            allowed_roles=[ContextualRole.INSTRUCTOR],
+            is_admin=is_admin,
+        )
+        await self._get_material_in_course(course_id, material_id)
+
+        los = await self.course_service.get_learning_objectives(course_id)
+        valid_lo_ids = {lo.id for lo in los}
+
+        created: List[CheckpointInstructorResponse] = []
+        for item in payload.checkpoints:
+            if item.lo_id is not None and item.lo_id not in valid_lo_ids:
+                raise LearningMaterialNotFoundException("Chuẩn đầu ra không tồn tại trong môn học.")
+
+            chk = MaterialCheckpoint(
+                material_id=material_id,
+                lo_id=item.lo_id,
+                stop_time_seconds=item.stop_time_seconds,
+                section_index=item.section_index,
+                question_text=item.question_text.strip(),
+                question_type=item.question_type,
+                options=item.options,
+                correct_option=item.correct_option.strip().upper(),
+                expected_concept=item.expected_concept,
+                bloom_level=item.bloom_level.value if item.bloom_level else None,
+                source_citation=item.source_citation,
+                is_blocking=item.is_blocking,
+                time_limit_seconds=item.time_limit_seconds,
+                rewind_seconds=item.rewind_seconds,
+            )
+            saved = await self.repo.create_checkpoint(chk)
+            created.append(CheckpointInstructorResponse.model_validate(saved))
+
+        return BatchCheckpointCreateResponse(
+            created_count=len(created),
+            checkpoints=created,
         )
