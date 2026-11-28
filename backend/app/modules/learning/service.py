@@ -9,7 +9,7 @@ from typing import Dict, List, Optional
 import uuid
 from fastapi import UploadFile
 from sqlalchemy.ext.asyncio import AsyncSession
-from app.modules.course.enums import ContextualRole
+from app.modules.course.enums import BloomLevel, ContextualRole
 from app.modules.course.public_api import CoursePublicService
 from app.modules.learning.enums import MaterialType
 from app.modules.learning.exceptions import (
@@ -48,6 +48,7 @@ from app.modules.learning.schemas import (
     ModuleResponse,
     ModuleUpdate,
     SectionItem,
+    SuggestPageCheckpointRequest,
 )
 from app.modules.learning.section_extractor import SectionExtractor
 from app.modules.ai_gateway.service import AIGatewayService
@@ -1127,6 +1128,8 @@ class LearningCheckpointService:
             options=payload.options,
             correct_option=payload.correct_option.strip().upper(),
             expected_concept=payload.expected_concept or payload.question_text[:200],
+            bloom_level=payload.bloom_level.value if payload.bloom_level else None,
+            source_citation=payload.source_citation,
             is_blocking=payload.is_blocking,
             time_limit_seconds=payload.time_limit_seconds,
             rewind_seconds=payload.rewind_seconds,
@@ -1178,6 +1181,10 @@ class LearningCheckpointService:
             chk.rewind_seconds = payload.rewind_seconds
         if "lo_id" in fields:
             chk.lo_id = payload.lo_id
+        if "bloom_level" in fields:
+            chk.bloom_level = payload.bloom_level.value if payload.bloom_level else None
+        if "source_citation" in fields:
+            chk.source_citation = payload.source_citation
 
         updated = await self.repo.update_checkpoint(chk)
         return CheckpointInstructorResponse.model_validate(updated)
@@ -1396,6 +1403,7 @@ class LearningCheckpointService:
             bloom_level=payload.bloom_level.value,
             num_questions=payload.num_questions,
             lo_hint=lo_hint,
+            bloom_distribution=payload.bloom_distribution,
         )
 
         suggestions: List[CheckpointSuggestionItem] = []
@@ -1406,6 +1414,11 @@ class LearningCheckpointService:
             quote = str(item.get("evidence_quote") or "").strip()
             c_page = int(item.get("citation_page") or selected_sections[0].start_page)
             c_para = int(item.get("citation_paragraph") or 1)
+            raw_bloom = str(item.get("bloom_level") or payload.bloom_level.value).strip().upper()
+            try:
+                item_bloom = BloomLevel(raw_bloom)
+            except ValueError:
+                item_bloom = payload.bloom_level
 
             if not q_text or not isinstance(options, dict) or len(options) < 4:
                 continue
@@ -1426,7 +1439,7 @@ class LearningCheckpointService:
                     question_text=q_text,
                     options=options,
                     correct_option=correct,
-                    bloom_level=payload.bloom_level,
+                    bloom_level=item_bloom,
                     lo_id=payload.lo_id,
                     citation_page=v_page,
                     citation_paragraph=v_para,
@@ -1436,6 +1449,89 @@ class LearningCheckpointService:
             )
 
         return CheckpointSuggestionsResponse(suggestions=suggestions)
+
+    async def suggest_page_checkpoint(
+        self,
+        course_id: uuid.UUID,
+        material_id: uuid.UUID,
+        page_index: int,
+        payload: SuggestPageCheckpointRequest,
+        user_id: uuid.UUID,
+        is_admin: bool = False,
+    ) -> CheckpointSuggestionItem:
+        """Generate 1 grounded MCQ suggestion for the exact page/slide currently viewed in Studio."""
+        await self.course_service.assert_course_role(
+            course_id=course_id,
+            user_id=user_id,
+            allowed_roles=[ContextualRole.INSTRUCTOR],
+            is_admin=is_admin,
+        )
+        await self._get_material_in_course(course_id, material_id)
+
+        lo_hint = ""
+        if payload.lo_id is not None:
+            los = await self.course_service.get_learning_objectives(course_id)
+            matching_lo = next((lo for lo in los if lo.id == payload.lo_id), None)
+            if not matching_lo:
+                raise LearningMaterialNotFoundException("Chuẩn đầu ra không tồn tại trong môn học.")
+            lo_hint = f"{matching_lo.code}: {matching_lo.description}"
+
+        mat_service = LearningMaterialService(self.db, repo=self.repo)
+        file_path = await mat_service.get_material_file_path(
+            course_id=course_id,
+            material_id=material_id,
+            user_id=user_id,
+            is_admin=is_admin,
+        )
+        doc = SectionExtractor().extract_document(file_path)
+        page_paragraphs = [p for p in doc.paragraphs if p.page == page_index]
+        total_words = sum(p.word_count for p in page_paragraphs)
+        if total_words < 15:
+            raise SectionTooShortException(
+                f"Trang/Slide {page_index} quá ít nội dung văn bản ({total_words} từ) để AI gợi ý câu hỏi."
+            )
+
+        indexed_context = "\n".join(
+            f"[Trang {p.page}, Đoạn {p.paragraph}] {p.text}" for p in page_paragraphs
+        )
+        raw_items = await AIGatewayService().generate_grounded_checkpoints(
+            indexed_context=indexed_context,
+            bloom_level=payload.bloom_level.value,
+            num_questions=1,
+            lo_hint=lo_hint,
+        )
+        for item in raw_items:
+            q_text = str(item.get("question_text") or "").strip()
+            options = item.get("options") or {}
+            correct = str(item.get("correct_option") or "A").strip().upper()
+            quote = str(item.get("evidence_quote") or "").strip()
+            c_para = int(item.get("citation_paragraph") or 1)
+            if not q_text or not isinstance(options, dict) or len(options) < 4:
+                continue
+            verified = self._verify_and_resolve_citation(
+                evidence_quote=quote,
+                claimed_page=page_index,
+                claimed_para=c_para,
+                section_paragraphs=page_paragraphs,
+            )
+            if verified:
+                v_page, v_para, v_quote = verified
+                return CheckpointSuggestionItem(
+                    temp_id="page-suggest-1",
+                    question_text=q_text,
+                    options=options,
+                    correct_option=correct,
+                    bloom_level=payload.bloom_level,
+                    lo_id=payload.lo_id,
+                    citation_page=v_page,
+                    citation_paragraph=v_para,
+                    citation=f"Trích từ Trang {v_page}, Đoạn {v_para}",
+                    evidence_quote=v_quote,
+                )
+
+        raise SectionTooShortException(
+            "AI chưa tạo được câu hỏi có bằng chứng trích dẫn khớp hoàn toàn cho trang này. Vui lòng thử lại."
+        )
 
     async def batch_create_checkpoints(
         self,

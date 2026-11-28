@@ -20,6 +20,7 @@ from app.modules.learning.schemas import (
     CheckpointStudentResponse,
     CheckpointSubmitRequest,
     CheckpointSubmitResponse,
+    CheckpointSuggestionItem,
     CheckpointSuggestionsResponse,
     CheckpointUpdate,
     GenerateCheckpointSuggestionsRequest,
@@ -34,6 +35,7 @@ from app.modules.learning.schemas import (
     ModuleResponse,
     ModuleUpdate,
     PublishToggleRequest,
+    SuggestPageCheckpointRequest,
 )
 from app.modules.learning.service import (
     LearningCheckpointService,
@@ -554,6 +556,30 @@ async def generate_checkpoint_suggestions(
     return await service.generate_checkpoint_suggestions(
         course_id=course_id,
         material_id=material_id,
+        payload=payload,
+        user_id=current_user.user.id,
+        is_admin=_is_admin(current_user),
+    )
+
+
+@router.post(
+    "/materials/{material_id}/pages/{page_index}/suggest-checkpoint",
+    response_model=CheckpointSuggestionItem,
+)
+async def suggest_page_checkpoint(
+    course_id: uuid.UUID,
+    material_id: uuid.UUID,
+    page_index: int,
+    payload: SuggestPageCheckpointRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: CurrentUser = Depends(get_current_user),
+):
+    """Generate 1 grounded MCQ suggestion for the exact page/slide currently viewed in Studio."""
+    service = LearningCheckpointService(db)
+    return await service.suggest_page_checkpoint(
+        course_id=course_id,
+        material_id=material_id,
+        page_index=page_index,
         payload=payload,
         user_id=current_user.user.id,
         is_admin=_is_admin(current_user),

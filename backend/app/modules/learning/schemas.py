@@ -4,7 +4,7 @@
 """Pydantic v2 schemas for Learning Modules and Materials REST API contracts."""
 
 from datetime import datetime
-from typing import List, Optional
+from typing import Dict, List, Optional
 import uuid
 from pydantic import BaseModel, ConfigDict, Field
 from app.modules.course.enums import BloomLevel
@@ -153,6 +153,8 @@ class CheckpointUpdate(BaseModel):
     time_limit_seconds: Optional[int] = Field(None, ge=5, le=120)
     rewind_seconds: Optional[int] = Field(None, ge=0, le=120)
     lo_id: Optional[uuid.UUID] = None
+    bloom_level: Optional[BloomLevel] = None
+    source_citation: Optional[str] = None
 
 
 class CheckpointInstructorResponse(BaseModel):
@@ -261,8 +263,19 @@ class GenerateCheckpointSuggestionsRequest(BaseModel):
     """Request payload to generate grounded multiple-choice checkpoints from selected sections."""
 
     section_ids: List[int] = Field(..., min_length=1, description="Danh sách ID phân đoạn được chọn")
+    bloom_level: BloomLevel = Field(BloomLevel.UNDERSTAND, description="Mức độ nhận thức Bloom mặc định")
+    bloom_distribution: Optional[Dict[str, int]] = Field(
+        None,
+        description="Phân bổ số lượng câu hỏi theo từng mức Bloom (VD: {'REMEMBER': 2, 'UNDERSTAND': 2, 'APPLY': 1})",
+    )
+    num_questions: int = Field(3, ge=1, le=10, description="Số lượng câu hỏi gợi ý")
+    lo_id: Optional[uuid.UUID] = Field(None, description="Chuẩn đầu ra gắn kèm")
+
+
+class SuggestPageCheckpointRequest(BaseModel):
+    """Request payload for in-context single-page AI checkpoint suggestion."""
+
     bloom_level: BloomLevel = Field(BloomLevel.UNDERSTAND, description="Mức độ nhận thức Bloom")
-    num_questions: int = Field(3, ge=1, le=5, description="Số lượng câu hỏi gợi ý")
     lo_id: Optional[uuid.UUID] = Field(None, description="Chuẩn đầu ra gắn kèm")
 
 
