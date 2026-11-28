@@ -26,7 +26,7 @@ from app.modules.assessment.models import (
     PeerReview,
     StudentGroup,
 )
-from app.modules.identity.models import User
+from app.modules.system.models import User
 
 
 class PeerReviewService:

@@ -101,12 +101,27 @@ class AssignmentAuthoringResponse(BaseModel):
     max_file_size_mb: int
     is_group_assignment: bool
     is_transfer_task: bool
-    assignment_type: str = "standard"
-    group_min_size: int = 1
-    group_max_size: int = 1
+    assignment_type: Optional[str] = "standard"
+    group_min_size: Optional[int] = 1
+    group_max_size: Optional[int] = 1
     group_formation_deadline: Optional[datetime] = None
     grade_group_id: Optional[uuid.UUID] = None
     available_from: Optional[datetime] = None
+
+    @field_validator("assignment_type", mode="before")
+    @classmethod
+    def _default_type(cls, v: Any) -> str:
+        return v or "standard"
+
+    @field_validator("group_min_size", mode="before")
+    @classmethod
+    def _default_min_size(cls, v: Any) -> int:
+        return 1 if v is None else v
+
+    @field_validator("group_max_size", mode="before")
+    @classmethod
+    def _default_max_size(cls, v: Any) -> int:
+        return 1 if v is None else v
     due_date: datetime
     until_date: Optional[datetime] = None
     late_penalty_percent: float

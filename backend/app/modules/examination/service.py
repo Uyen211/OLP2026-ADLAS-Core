@@ -1316,7 +1316,13 @@ class ExaminationService:
         if accepted:
             await self.db.refresh(refreshed)
 
-        quiz = await self.repo.get_quiz_by_id(submission.quiz_id)
+        quiz = None
+        if hasattr(self.repo, "get_quiz_by_id"):
+            res = self.repo.get_quiz_by_id(submission.quiz_id)
+            if hasattr(res, "__await__"):
+                quiz = await res
+            elif isinstance(res, Quiz):
+                quiz = res
         if quiz and quiz.strict_mode_enabled:
             if refreshed.strike_count >= quiz.max_strikes and not refreshed.is_flagged:
                 refreshed.is_flagged = True
@@ -1335,8 +1341,8 @@ class ExaminationService:
             remaining_seconds=remaining,
             tab_blur_count=refreshed.tab_blur_count,
             fullscreen_exit_count=refreshed.fullscreen_exit_count,
-            strike_count=refreshed.strike_count,
-            is_flagged=refreshed.is_flagged,
+            strike_count=getattr(refreshed, "strike_count", 0) or 0,
+            is_flagged=bool(getattr(refreshed, "is_flagged", False)),
         )
 
     async def submit_attempt(
@@ -1355,7 +1361,13 @@ class ExaminationService:
         if submission.status != SubmissionStatus.IN_PROGRESS.value:
             raise ExaminationStateException("Bai thi nay da duoc nop truoc do.")
 
-        quiz = await self.repo.get_quiz_by_id(submission.quiz_id)
+        quiz = None
+        if hasattr(self.repo, "get_quiz_by_id"):
+            res = self.repo.get_quiz_by_id(submission.quiz_id)
+            if hasattr(res, "__await__"):
+                quiz = await res
+            elif isinstance(res, Quiz):
+                quiz = res
         if quiz is None:
             raise ExaminationNotFoundException("Khong tim thay ky thi.")
 
@@ -1479,7 +1491,13 @@ class ExaminationService:
         if submission is None:
             raise ExaminationNotFoundException("Khong tim thay bai lam.")
 
-        quiz = await self.repo.get_quiz_by_id(submission.quiz_id)
+        quiz = None
+        if hasattr(self.repo, "get_quiz_by_id"):
+            res = self.repo.get_quiz_by_id(submission.quiz_id)
+            if hasattr(res, "__await__"):
+                quiz = await res
+            elif isinstance(res, Quiz):
+                quiz = res
         if quiz is None:
             raise ExaminationNotFoundException("Khong tim thay ky thi.")
 
@@ -1545,7 +1563,13 @@ class ExaminationService:
         if submission.status == SubmissionStatus.IN_PROGRESS.value:
             raise ExaminationStateException("Bai thi chua duoc nop, khong the phuc khao.")
 
-        quiz = await self.repo.get_quiz_by_id(submission.quiz_id)
+        quiz = None
+        if hasattr(self.repo, "get_quiz_by_id"):
+            res = self.repo.get_quiz_by_id(submission.quiz_id)
+            if hasattr(res, "__await__"):
+                quiz = await res
+            elif isinstance(res, Quiz):
+                quiz = res
         if quiz is None:
             raise ExaminationNotFoundException("Khong tim thay ky thi.")
 
@@ -1640,7 +1664,13 @@ class ExaminationService:
         submission = await self.repo.get_submission_by_id(regrade.submission_id)
         if submission is None:
             raise ExaminationNotFoundException("Khong tim thay bai lam lien ket.")
-        quiz = await self.repo.get_quiz_by_id(submission.quiz_id)
+        quiz = None
+        if hasattr(self.repo, "get_quiz_by_id"):
+            res = self.repo.get_quiz_by_id(submission.quiz_id)
+            if hasattr(res, "__await__"):
+                quiz = await res
+            elif isinstance(res, Quiz):
+                quiz = res
         if quiz is None:
             raise ExaminationNotFoundException("Khong tim thay ky thi.")
 

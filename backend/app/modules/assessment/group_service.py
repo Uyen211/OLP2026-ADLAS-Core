@@ -24,7 +24,7 @@ from app.modules.assessment.models import (
     StudentGroup,
 )
 from app.modules.course.models import CourseEnrollment
-from app.modules.identity.models import User
+from app.modules.system.models import User
 
 
 class GroupService:

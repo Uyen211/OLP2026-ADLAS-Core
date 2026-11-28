@@ -424,8 +424,18 @@ class AutosaveResponse(BaseModel):
     remaining_seconds: int
     tab_blur_count: int
     fullscreen_exit_count: int
-    strike_count: int = 0
-    is_flagged: bool = False
+    strike_count: Optional[int] = 0
+    is_flagged: Optional[bool] = False
+
+    @field_validator("strike_count", mode="before")
+    @classmethod
+    def _default_strikes(cls, v: Any) -> int:
+        return 0 if v is None else v
+
+    @field_validator("is_flagged", mode="before")
+    @classmethod
+    def _default_flagged(cls, v: Any) -> bool:
+        return False if v is None else v
 
 
 class SubmitAttemptRequest(BaseModel):
