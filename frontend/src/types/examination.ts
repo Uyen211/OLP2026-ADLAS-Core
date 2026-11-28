@@ -100,8 +100,11 @@ export interface QuestionUpdate {
 export interface QuestionResponse {
   id: string;
   bank_id: string;
+  folder_id?: string | null;
   lo_id?: string | null;
   bloom_level: BloomLevel;
+  difficulty?: string;
+  source_ref?: string | null;
   question_text: string;
   question_type: QuestionType;
   default_points: DecimalValue;
@@ -374,4 +377,58 @@ export interface LocalExamDraft {
   answers: StudentAnswersMap;
   flagged_questions: string[];
   updated_at: string;
+}
+
+// ------------------------------------------------------------------
+// Folders & 1-Click Extraction (TV3 Feature)
+// ------------------------------------------------------------------
+export interface QuestionFolderCreate {
+  folder_name: string;
+  parent_folder_id?: string | null;
+}
+
+export interface QuestionFolderResponse {
+  id: string;
+  course_id: string;
+  folder_name: string;
+  parent_folder_id?: string | null;
+  created_by?: string | null;
+  created_at: string;
+}
+
+export interface QuestionFolderStatsResponse {
+  total_questions: number;
+  folders_count: number;
+  by_folder: Record<string, number>;
+  by_difficulty: Record<string, number>;
+}
+
+export interface ExtractedQuestionDraft {
+  prompt: string;
+  options: QuestionOption[];
+  correct_key: string;
+  explanation?: string | null;
+  difficulty: string;
+  confidence_score: number;
+}
+
+export interface ExtractionPreviewResponse {
+  filename: string;
+  total_extracted: number;
+  questions: ExtractedQuestionDraft[];
+}
+
+export interface ExtractionBatchSaveRequest {
+  bank_id: string;
+  folder_id?: string | null;
+  questions: ExtractedQuestionDraft[];
+}
+
+export interface DrawRuleItem {
+  id?: string;
+  folder_id?: string | null;
+  bank_id?: string | null;
+  difficulty?: string | null;
+  count: number;
+  points_per_question: number;
 }

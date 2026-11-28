@@ -10,6 +10,11 @@ import type {
   AttemptStartResponse,
   AutosaveRequest,
   AutosaveResponse,
+  ExtractionBatchSaveRequest,
+  ExtractionPreviewResponse,
+  QuestionFolderCreate,
+  QuestionFolderResponse,
+  QuestionFolderStatsResponse,
   PasscodeRegenerateResponse,
   PublishGradesResponse,
   QuestionBankCreate,
@@ -272,6 +277,81 @@ export const examinationService = {
   ): Promise<RegradeReviewResponse> {
     return httpRequest<RegradeReviewResponse>(
       `${BASE}/regrades/${regradeId}/review`,
+      {
+        method: "POST",
+        body: payload,
+      }
+    );
+  },
+
+  // ------------------------------------------------------------------
+  // Folders & 1-Click Extraction (TV3 Feature)
+  // ------------------------------------------------------------------
+  listQuestionFolders(courseId: string): Promise<QuestionFolderResponse[]> {
+    return httpRequest<QuestionFolderResponse[]>(
+      `${BASE}/courses/${courseId}/folders`
+    );
+  },
+
+  createQuestionFolder(
+    courseId: string,
+    payload: QuestionFolderCreate
+  ): Promise<QuestionFolderResponse> {
+    return httpRequest<QuestionFolderResponse>(
+      `${BASE}/courses/${courseId}/folders`,
+      {
+        method: "POST",
+        body: payload,
+      }
+    );
+  },
+
+  deleteQuestionFolder(folderId: string): Promise<void> {
+    return httpRequest<void>(`${BASE}/folders/${folderId}`, {
+      method: "DELETE",
+    });
+  },
+
+  getQuestionFolderStats(courseId: string): Promise<QuestionFolderStatsResponse> {
+    return httpRequest<QuestionFolderStatsResponse>(
+      `${BASE}/courses/${courseId}/questions/folder-stats`
+    );
+  },
+
+  extractQuestionsFromText(
+    courseId: string,
+    text: string
+  ): Promise<ExtractionPreviewResponse> {
+    return httpRequest<ExtractionPreviewResponse>(
+      `${BASE}/courses/${courseId}/extract-text`,
+      {
+        method: "POST",
+        body: { text },
+      }
+    );
+  },
+
+  extractQuestionsFromUpload(
+    courseId: string,
+    file: File
+  ): Promise<ExtractionPreviewResponse> {
+    const formData = new FormData();
+    formData.append("file", file);
+    return httpRequest<ExtractionPreviewResponse>(
+      `${BASE}/courses/${courseId}/extract-upload`,
+      {
+        method: "POST",
+        formData,
+      }
+    );
+  },
+
+  batchSaveQuestions(
+    courseId: string,
+    payload: ExtractionBatchSaveRequest
+  ): Promise<QuestionResponse[]> {
+    return httpRequest<QuestionResponse[]>(
+      `${BASE}/courses/${courseId}/batch-save-questions`,
       {
         method: "POST",
         body: payload,

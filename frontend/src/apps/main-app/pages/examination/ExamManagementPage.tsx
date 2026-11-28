@@ -22,6 +22,7 @@ import {
   Send,
   Settings,
   ShieldCheck,
+  Sparkles,
   Trash2,
 } from "lucide-react";
 import { courseService } from "../../../../services/courseService";
@@ -419,10 +420,17 @@ export const ExamManagementPage: React.FC = () => {
                           Tổ chức câu hỏi theo chương để bốc đề ngẫu nhiên theo ma trận Snapshot
                         </p>
                       </div>
-                      <form
-                        onSubmit={handleCreateBank}
-                        className="flex w-full max-w-md items-center gap-2"
-                      >
+                      <div className="flex flex-wrap items-center gap-2">
+                        <Link to={`/courses/${courseId}/question-bank`}>
+                          <MmButton variant="primary" size="sm">
+                            <Sparkles className="h-4 w-4" />
+                            <span>Thư mục đa cấp & Trích xuất AI</span>
+                          </MmButton>
+                        </Link>
+                        <form
+                          onSubmit={handleCreateBank}
+                          className="flex w-full max-w-md items-center gap-2"
+                        >
                         <input
                           type="text"
                           value={newBankName}
@@ -442,6 +450,7 @@ export const ExamManagementPage: React.FC = () => {
                         </MmButton>
                       </form>
                     </div>
+                  </div>
 
                     {banks.length === 0 ? (
                       <p className="mt-4 font-mm-ui text-sm text-mm-text-muted">
