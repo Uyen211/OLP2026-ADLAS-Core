@@ -88,6 +88,8 @@ export interface MaterialCheckpoint {
   options?: Record<string, string> | null;
   correct_option?: string | null;
   expected_concept?: string | null;
+  bloom_level?: "REMEMBER" | "UNDERSTAND" | "APPLY" | null;
+  source_citation?: string | null;
   is_blocking: boolean;
   time_limit_seconds: number;
   rewind_seconds: number;
@@ -166,7 +168,13 @@ export interface MaterialSectionsResponse {
 export interface GenerateCheckpointSuggestionsRequest {
   section_ids: number[];
   bloom_level: "REMEMBER" | "UNDERSTAND" | "APPLY";
+  bloom_distribution?: Record<string, number>;
   num_questions: number;
+  lo_id?: string | null;
+}
+
+export interface SuggestPageCheckpointRequest {
+  bloom_level: "REMEMBER" | "UNDERSTAND" | "APPLY";
   lo_id?: string | null;
 }
 

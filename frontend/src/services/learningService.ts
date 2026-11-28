@@ -19,6 +19,7 @@ import type {
   MaterialUploadResult,
   ModuleCreatePayload,
   ModuleUpdatePayload,
+  SuggestPageCheckpointRequest,
 } from "../types/learning";
 import { httpDownloadBlob, httpFetchBlob, httpRequest } from "./httpClient";
 
@@ -244,6 +245,18 @@ export const learningService = {
     return httpRequest<{ created_count: number; checkpoints: MaterialCheckpoint[] }>(
       `/courses/${courseId}/learning/materials/${materialId}/batch-checkpoints`,
       { method: "POST", body: { checkpoints } }
+    );
+  },
+
+  suggestPageCheckpoint(
+    courseId: string,
+    materialId: string,
+    pageIndex: number,
+    payload: SuggestPageCheckpointRequest
+  ): Promise<CheckpointSuggestion> {
+    return httpRequest<CheckpointSuggestion>(
+      `/courses/${courseId}/learning/materials/${materialId}/pages/${pageIndex}/suggest-checkpoint`,
+      { method: "POST", body: payload }
     );
   },
 };
