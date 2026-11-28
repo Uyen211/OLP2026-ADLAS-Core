@@ -194,3 +194,84 @@ class InvalidRubricLearningObjectiveException(ADLASException):
             detail=f"Learning Objective '{lo_id}' does not belong to this course.",
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY
         )
+
+
+class GroupTopicFullException(ADLASException):
+    def __init__(self, topic_code: str):
+        super().__init__(
+            code="E-GRP-01",
+            detail=f"Project topic '{topic_code}' has reached its maximum group capacity.",
+            status_code=status.HTTP_409_CONFLICT,
+        )
+
+
+class GroupFormationDeadlinePassedException(ADLASException):
+    def __init__(self):
+        super().__init__(
+            code="E-GRP-02",
+            detail="The group formation deadline for this assignment has passed.",
+            status_code=status.HTTP_400_BAD_REQUEST,
+        )
+
+
+class StudentGroupNotFoundException(ADLASException):
+    def __init__(self, group_id: str):
+        super().__init__(
+            code="E-GRP-03",
+            detail=f"Student group '{group_id}' was not found.",
+            status_code=status.HTTP_404_NOT_FOUND,
+        )
+
+
+class ProjectTopicNotFoundException(ADLASException):
+    def __init__(self, topic_id: str):
+        super().__init__(
+            code="E-GRP-04",
+            detail=f"Project topic '{topic_id}' was not found.",
+            status_code=status.HTTP_404_NOT_FOUND,
+        )
+
+
+class InvalidMilestoneWeightsException(ADLASException):
+    def __init__(self, current_total: float):
+        super().__init__(
+            code="E-MLS-01",
+            detail=f"Milestone weights must total exactly 100.0% (current sum: {current_total}%).",
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+        )
+
+
+class InvalidMilestoneDatesException(ADLASException):
+    def __init__(self, detail: str = "Milestone due_date must be before until_date and within the assignment timeframe."):
+        super().__init__(
+            code="E-MLS-02",
+            detail=detail,
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+        )
+
+
+class AssignmentMilestoneNotFoundException(ADLASException):
+    def __init__(self, milestone_id: str):
+        super().__init__(
+            code="E-MLS-03",
+            detail=f"Milestone '{milestone_id}' was not found.",
+            status_code=status.HTTP_404_NOT_FOUND,
+        )
+
+
+class PeerReviewSelfNotAllowedException(ADLASException):
+    def __init__(self):
+        super().__init__(
+            code="E-REV-01",
+            detail="Self-evaluation is not permitted in peer review.",
+            status_code=status.HTTP_400_BAD_REQUEST,
+        )
+
+
+class PeerReviewNotMemberException(ADLASException):
+    def __init__(self):
+        super().__init__(
+            code="E-REV-02",
+            detail="Peer review can only be submitted for members within your own group.",
+            status_code=status.HTTP_403_FORBIDDEN,
+        )

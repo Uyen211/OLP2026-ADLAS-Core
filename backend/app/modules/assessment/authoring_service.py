@@ -12,13 +12,17 @@ from app.modules.assessment.authoring_schemas import (
     AssignmentCreateRequest,
     AssignmentDeleteResponse,
     AssignmentUpdateRequest,
+    MilestoneResponse,
+    MilestonesBatchCreateRequest,
 )
 from app.modules.assessment.exceptions import (
     AssessmentNotFoundException,
     AssignmentHasSubmissionsException,
     InvalidAssignmentScheduleException,
+    InvalidMilestoneDatesException,
+    InvalidMilestoneWeightsException,
 )
-from app.modules.assessment.models import Assignment
+from app.modules.assessment.models import Assignment, AssignmentMilestone
 from app.modules.assessment.repository import AssessmentRepository
 from app.modules.course.enums import ContextualRole
 from app.modules.course.public_api import CoursePublicService
@@ -171,3 +175,60 @@ class AssignmentAuthoringService:
         await self.repo.delete_assignment_if_no_submissions(assignment_id)
         await self.db.commit()
         return AssignmentDeleteResponse(id=assignment_id)
+
+    async def create_milestones(
+        self,
+        assignment_id: uuid.UUID,
+        user: Any,
+        payload: MilestonesBatchCreateRequest,
+    ) -> list[MilestoneResponse]:
+        """Configure milestones for an assignment with sum(weights)==100%."""
+        assignment = await self._load_assignment(assignment_id)
+        await self._assert_instructor(assignment.course_id, user)
+
+        total_weight = sum(m.weight_percent for m in payload.milestones)
+        if total_weight != 100:
+            raise InvalidMilestoneWeightsException(float(total_weight))
+
+        for m in payload.milestones:
+            due = _aware(m.due_date)
+            until = _aware(m.until_date)
+            if until and due and until < due:
+                raise InvalidMilestoneDatesException("Milestone until_date cannot be earlier than due_date.")
+
+        # Remove existing milestones for fresh set
+        from sqlalchemy import delete
+        await self.db.execute(delete(AssignmentMilestone).where(AssignmentMilestone.assignment_id == assignment_id))
+
+        created: list[AssignmentMilestone] = []
+        for item in payload.milestones:
+            ms = AssignmentMilestone(
+                assignment_id=assignment.id,
+                title=item.title,
+                description=item.description,
+                weight_percent=item.weight_percent,
+                due_date=item.due_date,
+                until_date=item.until_date,
+                order_index=item.order_index,
+            )
+            self.db.add(ms)
+            created.append(ms)
+
+        await self.db.commit()
+        for ms in created:
+            await self.db.refresh(ms)
+
+        return [MilestoneResponse.model_validate(m) for m in created]
+
+    async def list_milestones(self, assignment_id: uuid.UUID) -> list[MilestoneResponse]:
+        """List all milestones for an assignment in order."""
+        from sqlalchemy import select
+        await self._load_assignment(assignment_id)
+        stmt = (
+            select(AssignmentMilestone)
+            .where(AssignmentMilestone.assignment_id == assignment_id)
+            .order_by(AssignmentMilestone.order_index.asc())
+        )
+        res = await self.db.execute(stmt)
+        milestones = list(res.scalars().all())
+        return [MilestoneResponse.model_validate(m) for m in milestones]

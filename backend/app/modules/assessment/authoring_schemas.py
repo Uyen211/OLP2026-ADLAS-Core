@@ -38,6 +38,11 @@ class AssignmentCreateRequest(BaseModel):
     max_file_size_mb: int = Field(50, ge=1, le=500)
     is_group_assignment: bool = False
     is_transfer_task: bool = False
+    assignment_type: str = "standard"
+    group_min_size: int = Field(1, ge=1, le=50)
+    group_max_size: int = Field(1, ge=1, le=50)
+    group_formation_deadline: Optional[datetime] = None
+    grade_group_id: Optional[uuid.UUID] = None
     available_from: Optional[datetime] = None
     due_date: datetime
     until_date: Optional[datetime] = None
@@ -65,6 +70,11 @@ class AssignmentUpdateRequest(BaseModel):
     max_file_size_mb: Optional[int] = Field(None, ge=1, le=500)
     is_group_assignment: Optional[bool] = None
     is_transfer_task: Optional[bool] = None
+    assignment_type: Optional[str] = None
+    group_min_size: Optional[int] = Field(None, ge=1, le=50)
+    group_max_size: Optional[int] = Field(None, ge=1, le=50)
+    group_formation_deadline: Optional[datetime] = None
+    grade_group_id: Optional[uuid.UUID] = None
     available_from: Optional[datetime] = None
     due_date: Optional[datetime] = None
     until_date: Optional[datetime] = None
@@ -91,6 +101,11 @@ class AssignmentAuthoringResponse(BaseModel):
     max_file_size_mb: int
     is_group_assignment: bool
     is_transfer_task: bool
+    assignment_type: str = "standard"
+    group_min_size: int = 1
+    group_max_size: int = 1
+    group_formation_deadline: Optional[datetime] = None
+    grade_group_id: Optional[uuid.UUID] = None
     available_from: Optional[datetime] = None
     due_date: datetime
     until_date: Optional[datetime] = None
@@ -199,3 +214,164 @@ class PledgeStatusResponse(BaseModel):
 
 class PledgeSignResponse(PledgeStatusResponse):
     pledge_id: uuid.UUID
+
+
+# ----------------------------------------------------------------------
+# Milestones (TV3 Feature)
+# ----------------------------------------------------------------------
+class MilestoneCreateSchema(BaseModel):
+    title: str = Field(..., min_length=1, max_length=200)
+    description: Optional[str] = None
+    weight_percent: Decimal = Field(..., ge=0, le=100)
+    due_date: datetime
+    until_date: Optional[datetime] = None
+    order_index: int = Field(1, ge=1)
+
+    @field_validator("until_date")
+    @classmethod
+    def _validate_dates(cls, until_date: Optional[datetime], info: Any) -> Optional[datetime]:
+        due_date = info.data.get("due_date")
+        if due_date and until_date and until_date < due_date:
+            raise ValueError("Milestone until_date cannot be earlier than due_date.")
+        return until_date
+
+
+class MilestoneUpdateSchema(BaseModel):
+    title: Optional[str] = Field(None, min_length=1, max_length=200)
+    description: Optional[str] = None
+    weight_percent: Optional[Decimal] = Field(None, ge=0, le=100)
+    due_date: Optional[datetime] = None
+    until_date: Optional[datetime] = None
+    order_index: Optional[int] = Field(None, ge=1)
+
+
+class MilestoneResponse(BaseModel):
+    id: uuid.UUID
+    assignment_id: uuid.UUID
+    title: str
+    description: Optional[str] = None
+    weight_percent: float
+    due_date: datetime
+    until_date: Optional[datetime] = None
+    order_index: int
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class MilestonesBatchCreateRequest(BaseModel):
+    milestones: List[MilestoneCreateSchema]
+
+    @field_validator("milestones")
+    @classmethod
+    def _validate_weights_sum(cls, v: List[MilestoneCreateSchema]) -> List[MilestoneCreateSchema]:
+        if not v:
+            return v
+        total = sum(m.weight_percent for m in v)
+        if total != Decimal("100.0"):
+            raise ValueError(f"Total weight of milestones must be exactly 100% (got {total}%).")
+        return v
+
+
+# ----------------------------------------------------------------------
+# Topics & Groups (TV3 Feature)
+# ----------------------------------------------------------------------
+class TopicCreateRequest(BaseModel):
+    topic_code: str = Field(..., min_length=1, max_length=50)
+    title: str = Field(..., min_length=1, max_length=255)
+    description: Optional[str] = None
+    max_groups: int = Field(1, ge=1, le=100)
+
+
+class TopicResponse(BaseModel):
+    id: uuid.UUID
+    assignment_id: uuid.UUID
+    topic_code: str
+    title: str
+    description: Optional[str] = None
+    max_groups: int
+    current_groups_count: int
+    is_active: bool
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class TopicSelectRequest(BaseModel):
+    topic_id: uuid.UUID
+
+
+class GroupMemberResponse(BaseModel):
+    id: uuid.UUID
+    group_id: uuid.UUID
+    student_id: uuid.UUID
+    student_name: Optional[str] = None
+    student_email: Optional[str] = None
+    role: str = "MEMBER"
+    joined_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class StudentGroupCreateRequest(BaseModel):
+    group_name: str = Field(..., min_length=1, max_length=100)
+    topic_id: Optional[uuid.UUID] = None
+    member_ids: List[uuid.UUID] = Field(default_factory=list)
+
+
+class StudentGroupResponse(BaseModel):
+    id: uuid.UUID
+    assignment_id: uuid.UUID
+    group_name: str
+    topic_id: Optional[uuid.UUID] = None
+    topic_code: Optional[str] = None
+    topic_title: Optional[str] = None
+    leader_student_id: uuid.UUID
+    is_finalized: bool
+    members: List[GroupMemberResponse] = Field(default_factory=list)
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+# ----------------------------------------------------------------------
+# Blind Peer Review & Factor Fi (TV3 Feature)
+# ----------------------------------------------------------------------
+class PeerReviewSubmitRequest(BaseModel):
+    milestone_id: Optional[uuid.UUID] = None
+    reviewee_id: uuid.UUID
+    criteria_scores: Dict[str, float] = Field(default_factory=dict)
+    total_score: Decimal = Field(..., ge=0, le=100)
+    comment: Optional[str] = None
+
+
+class PeerReviewResponse(BaseModel):
+    id: uuid.UUID
+    assignment_id: uuid.UUID
+    milestone_id: Optional[uuid.UUID] = None
+    reviewee_id: uuid.UUID
+    criteria_scores_json: Dict[str, Any] = Field(default_factory=dict)
+    total_score: float
+    comment: Optional[str] = None
+    submitted_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class PeerReviewMemberSummary(BaseModel):
+    student_id: uuid.UUID
+    student_name: Optional[str] = None
+    student_email: Optional[str] = None
+    average_score_received: float
+    group_average_score: float
+    factor_f: float
+    raw_grade: float
+    adjusted_grade: float
+
+
+class PeerReviewSummaryResponse(BaseModel):
+    assignment_id: uuid.UUID
+    group_id: uuid.UUID
+    milestone_id: Optional[uuid.UUID] = None
+    summaries: List[PeerReviewMemberSummary] = Field(default_factory=list)
