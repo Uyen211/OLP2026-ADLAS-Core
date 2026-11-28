@@ -10,6 +10,7 @@ from decimal import Decimal
 import secrets
 from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
 import uuid
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.modules.course.enums import BloomLevel, ContextualRole
 from app.modules.course.public_api import CoursePublicService
@@ -47,6 +48,7 @@ from app.modules.examination.schemas import (
     ActiveSessionResponse,
     AttemptQuestionResponse,
     AttemptResultResponse,
+    AttemptReviewSummaryResponse,
     AttemptStartRequest,
     AttemptStartResponse,
     AutosaveRequest,
@@ -54,6 +56,7 @@ from app.modules.examination.schemas import (
     DrawRuleSchema,
     ExtractionBatchSaveRequest,
     ExtractionPreviewResponse,
+    FinalizeReviewRequest,
     PasscodeRegenerateResponse,
     PublishGradesResponse,
     QuestionBankCreate,
@@ -62,6 +65,8 @@ from app.modules.examination.schemas import (
     QuestionDeleteResponse,
     QuestionFolderCreate,
     QuestionFolderResponse,
+    QuestionFolderStatsItem,
+    QuestionFolderStatsResponse,
     QuestionOptionSchema,
     QuestionResponse,
     QuestionUpdate,
@@ -78,6 +83,8 @@ from app.modules.examination.schemas import (
     ResultQuestionAnalysis,
     SubmitAttemptRequest,
     SubmitAttemptResponse,
+    ViolationRecordRequest,
+    ViolationRecordResponse,
     _validate_question_options,
 )
 from app.modules.examination.scoring import (
@@ -1875,6 +1882,181 @@ class ExaminationService:
             regrade=_to_regrade_summary(regrade),
             affected_submissions_count=len(class_submissions),
             closed_pending_regrades_count=closed_siblings,
+        )
+
+    # ------------------------------------------------------------------
+    # TV3 Extensions: Folder Stats, Violations & Alert Timeline Review
+    # ------------------------------------------------------------------
+    async def get_question_folder_stats(
+        self,
+        course_id: uuid.UUID,
+        actor: User,
+    ) -> QuestionFolderStatsResponse:
+        """Return question breakdown per folder and difficulty for exam builder (T2-P-M4-02)."""
+        await self._assert_course_member(course_id, actor)
+        stats = await self.repo.get_question_folder_stats(course_id)
+        return QuestionFolderStatsResponse(
+            folders=[QuestionFolderStatsItem(**item) for item in stats]
+        )
+
+    async def record_attempt_violation(
+        self,
+        submission_id: uuid.UUID,
+        payload: ViolationRecordRequest,
+        actor: User,
+    ) -> ViolationRecordResponse:
+        """Record strict mode proctoring violation and trigger 3-strikes flag (T2-P-M4-03)."""
+        submission = await self.repo.get_submission_by_id(submission_id)
+        if submission is None:
+            raise ExaminationNotFoundException("Khong tim thay phien lam bai.")
+        if submission.user_id != actor.id and not _is_system_admin(actor):
+            raise ExaminationForbiddenException("Ban khong phai chu so huu phien lam bai nay.")
+        if submission.status != SubmissionStatus.IN_PROGRESS.value:
+            raise ExamClosedException("Phien lam bai da ket thuc.")
+
+        quiz = None
+        if hasattr(self.repo, "get_quiz_by_id"):
+            res = self.repo.get_quiz_by_id(submission.quiz_id)
+            if hasattr(res, "__await__"):
+                quiz = await res
+            elif isinstance(res, Quiz):
+                quiz = res
+
+        max_strikes = getattr(quiz, "max_strikes", 3) if quiz else 3
+        if max_strikes is None or max_strikes < 1:
+            max_strikes = 3
+
+        current_strikes = (getattr(submission, "strike_count", 0) or 0) + 1
+        submission.strike_count = current_strikes
+        if current_strikes >= max_strikes:
+            submission.is_flagged = True
+
+        log_event = {
+            "type": payload.violation_type,
+            "client_ts": payload.client_ts or datetime.now(timezone.utc).isoformat(),
+            "strike": current_strikes,
+        }
+        logs = list(submission.violation_logs_json or [])
+        logs.append(log_event)
+        submission.violation_logs_json = logs
+        submission.violation_logs = logs
+
+        await self.db.flush()
+        return ViolationRecordResponse(
+            strike_count=submission.strike_count,
+            max_strikes=max_strikes,
+            is_flagged=submission.is_flagged,
+        )
+
+    async def list_quiz_attempts(
+        self,
+        quiz_id: uuid.UUID,
+        flagged_only: bool,
+        actor: User,
+    ) -> List[AttemptReviewSummaryResponse]:
+        """List attempts for a quiz (Alert Timeline review) (T2-P-M4-04)."""
+        quiz = await self.repo.get_quiz_by_id(quiz_id)
+        if quiz is None:
+            raise ExaminationNotFoundException("Khong tim thay ky thi.")
+        await self._assert_instructor(quiz.course_id, actor)
+
+        records = await self.repo.list_quiz_submissions_with_users(quiz_id, flagged_only=flagged_only)
+        results: List[AttemptReviewSummaryResponse] = []
+        for sub, u in records:
+            full_name = f"{u.first_name} {u.last_name}".strip() if u else None
+            results.append(
+                AttemptReviewSummaryResponse(
+                    id=sub.id,
+                    quiz_id=sub.quiz_id,
+                    user_id=sub.user_id,
+                    student_name=full_name or "Sinh vien",
+                    student_email=u.email if u else None,
+                    attempt_number=sub.attempt_number,
+                    strike_count=getattr(sub, "strike_count", 0) or 0,
+                    is_flagged=getattr(sub, "is_flagged", False) or False,
+                    auto_score=sub.auto_score,
+                    final_score=sub.final_score,
+                    status=sub.status,
+                    review_decision=getattr(sub, "review_decision", None),
+                    instructor_note=getattr(sub, "instructor_note", None),
+                    violation_logs=list(getattr(sub, "violation_logs_json", None) or getattr(sub, "violation_logs", None) or []),
+                    started_at=sub.started_at,
+                    submitted_at=sub.submitted_at,
+                )
+            )
+        return results
+
+    async def finalize_attempt_review(
+        self,
+        submission_id: uuid.UUID,
+        payload: FinalizeReviewRequest,
+        actor: User,
+    ) -> AttemptReviewSummaryResponse:
+        """Instructor reviews flagged attempt or grades essay questions (T2-P-M4-04)."""
+        submission = await self.repo.get_submission_by_id(submission_id)
+        if submission is None:
+            raise ExaminationNotFoundException("Khong tim thay phien lam bai.")
+
+        quiz = await self.repo.get_quiz_by_id(submission.quiz_id)
+        if quiz is None:
+            raise ExaminationNotFoundException("Khong tim thay ky thi.")
+        await self._assert_instructor(quiz.course_id, actor)
+
+        decision = payload.review_decision.upper()
+        if decision not in ("ACCEPTED", "INVALIDATED"):
+            raise ExaminationValidationException("review_decision phai la ACCEPTED hoac INVALIDATED.")
+
+        if decision == "INVALIDATED":
+            submission.final_score = Decimal("0.00")
+            submission.review_decision = "INVALIDATED"
+        else:
+            base_score = submission.auto_score or Decimal("0.00")
+            essay_points = Decimal(str(sum(payload.essay_scores.values()))) if payload.essay_scores else Decimal("0.00")
+            submission.final_score = min(Decimal("10.00"), base_score + essay_points)
+            submission.review_decision = "ACCEPTED"
+
+        submission.instructor_note = payload.instructor_note
+        submission.status = SubmissionStatus.FINALIZED.value
+        await self.db.flush()
+
+        best_score = await self.repo.get_best_score_for_user(quiz.id, submission.user_id)
+        await self.repo.enqueue_outbox_event(
+            event_type="examination.quiz_review_finalized",
+            aggregate_type="QuizSubmission",
+            aggregate_id=submission.id,
+            payload={
+                "course_id": str(quiz.course_id),
+                "quiz_id": str(quiz.id),
+                "submission_id": str(submission.id),
+                "user_id": str(submission.user_id),
+                "review_decision": submission.review_decision,
+                "final_score": float(submission.final_score),
+                "best_score": float(best_score if best_score is not None else submission.final_score),
+            },
+        )
+
+        u_stmt = select(User).where(User.id == submission.user_id)
+        u_res = await self.db.execute(u_stmt)
+        u = u_res.scalar_one_or_none()
+        full_name = f"{u.first_name} {u.last_name}".strip() if u else None
+
+        return AttemptReviewSummaryResponse(
+            id=submission.id,
+            quiz_id=submission.quiz_id,
+            user_id=submission.user_id,
+            student_name=full_name or "Sinh vien",
+            student_email=u.email if u else None,
+            attempt_number=getattr(submission, "attempt_number", 1) or 1,
+            strike_count=getattr(submission, "strike_count", 0) or 0,
+            is_flagged=getattr(submission, "is_flagged", False) or False,
+            auto_score=submission.auto_score,
+            final_score=submission.final_score,
+            status=submission.status,
+            review_decision=submission.review_decision,
+            instructor_note=submission.instructor_note,
+            violation_logs=list(submission.violation_logs_json or submission.violation_logs or []),
+            started_at=getattr(submission, "started_at", None) or datetime.now(timezone.utc),
+            submitted_at=submission.submitted_at,
         )
 
     # Helper exposed for unit testing / Lượt 3B reuse

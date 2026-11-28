@@ -238,6 +238,7 @@ class StudentGroup(Base):
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     assignment_id = Column(UUID(as_uuid=True), ForeignKey("assessment.assignments.id", ondelete="CASCADE"), nullable=False)
     group_name = Column(String(100), nullable=False)
+    join_code = Column(String(10), nullable=True, unique=True)
     topic_id = Column(UUID(as_uuid=True), ForeignKey("assessment.project_topics.id", ondelete="SET NULL"), nullable=True)
     leader_student_id = Column(UUID(as_uuid=True), ForeignKey("identity.users.id", ondelete="RESTRICT"), nullable=False)
     is_finalized = Column(Boolean, nullable=False, default=False)

@@ -4,6 +4,7 @@
 """Group formation, topic selection, and orphan student assignment service (TV3)."""
 
 from datetime import datetime, timezone
+import secrets
 from typing import List, Optional
 import uuid
 from sqlalchemy import func, select
@@ -13,8 +14,11 @@ from app.modules.assessment.exceptions import (
     AssessmentAccessDeniedException,
     AssessmentNotFoundException,
     GroupFormationDeadlinePassedException,
+    GroupFullException,
     GroupTopicFullException,
+    InvalidJoinCodeException,
     ProjectTopicNotFoundException,
+    StudentAlreadyInGroupException,
     StudentGroupNotFoundException,
 )
 from app.modules.assessment.models import (
@@ -90,9 +94,11 @@ class GroupService:
                 if mid not in members_to_add:
                     members_to_add.append(mid)
 
+        join_code = "".join(secrets.choice("ABCDEFGHJKLMNPQRSTUVWXYZ23456789") for _ in range(6))
         group = StudentGroup(
             assignment_id=assignment.id,
             group_name=group_name,
+            join_code=join_code,
             topic_id=None,
             leader_student_id=leader.id,
             is_finalized=False,
@@ -180,6 +186,61 @@ class GroupService:
         if not group:
             raise StudentGroupNotFoundException(str(group_id))
         return group
+
+    async def join_group_by_code(
+        self,
+        assignment_id: uuid.UUID,
+        user: User,
+        join_code: str,
+    ) -> StudentGroup:
+        """Student joins a group using the 6-character group invite code."""
+        assignment = await self._get_assignment(assignment_id)
+        now = datetime.now(timezone.utc)
+
+        if assignment.group_formation_deadline and now > assignment.group_formation_deadline:
+            raise GroupFormationDeadlinePassedException()
+
+        normalized_code = join_code.strip().upper()
+        stmt = (
+            select(StudentGroup)
+            .where(
+                StudentGroup.assignment_id == assignment_id,
+                StudentGroup.join_code == normalized_code,
+            )
+            .options(
+                selectinload(StudentGroup.members),
+                selectinload(StudentGroup.topic),
+            )
+        )
+        result = await self.db.execute(stmt)
+        group = result.scalar_one_or_none()
+        if not group:
+            raise InvalidJoinCodeException(normalized_code)
+
+        # BR-ROSTER-01: A student cannot be in more than 1 group for the same assignment
+        check_stmt = (
+            select(GroupMember)
+            .join(StudentGroup, StudentGroup.id == GroupMember.group_id)
+            .where(
+                StudentGroup.assignment_id == assignment_id,
+                GroupMember.student_id == user.id,
+            )
+        )
+        existing_membership = (await self.db.execute(check_stmt)).scalar_one_or_none()
+        if existing_membership:
+            raise StudentAlreadyInGroupException()
+
+        if assignment.group_max_size and len(group.members) >= assignment.group_max_size:
+            raise GroupFullException()
+
+        member = GroupMember(
+            group_id=group.id,
+            student_id=user.id,
+            role="MEMBER",
+        )
+        self.db.add(member)
+        await self.db.commit()
+        return await self.get_group(group.id)
 
     async def list_groups(self, assignment_id: uuid.UUID) -> List[StudentGroup]:
         """List all groups for an assignment."""

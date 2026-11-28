@@ -564,3 +564,55 @@ class RegradeReviewResponse(BaseModel):
     regrade: RegradeSummaryResponse
     affected_submissions_count: int = 0
     closed_pending_regrades_count: int = 0
+
+
+# ------------------------------------------------------------------
+# TV3 Extensions: Folder Stats, Violations & Alert Timeline Review
+# ------------------------------------------------------------------
+class QuestionFolderStatsItem(BaseModel):
+    folder_id: Optional[uuid.UUID] = None
+    name: str
+    EASY: int = 0
+    MEDIUM: int = 0
+    HARD: int = 0
+    total: int = 0
+
+
+class QuestionFolderStatsResponse(BaseModel):
+    folders: List[QuestionFolderStatsItem]
+
+
+class ViolationRecordRequest(BaseModel):
+    violation_type: str = Field(..., description="TAB_SWITCH, EXIT_FULLSCREEN, WINDOW_BLUR, or COPY_PASTE")
+    client_ts: Optional[str] = None
+
+
+class ViolationRecordResponse(BaseModel):
+    strike_count: int
+    max_strikes: int
+    is_flagged: bool
+
+
+class AttemptReviewSummaryResponse(BaseModel):
+    id: uuid.UUID
+    quiz_id: uuid.UUID
+    user_id: uuid.UUID
+    student_name: Optional[str] = None
+    student_email: Optional[str] = None
+    attempt_number: int
+    strike_count: int = 0
+    is_flagged: bool = False
+    auto_score: Optional[Decimal] = None
+    final_score: Optional[Decimal] = None
+    status: str
+    review_decision: Optional[str] = None
+    instructor_note: Optional[str] = None
+    violation_logs: List[Dict[str, Any]] = Field(default_factory=list)
+    started_at: datetime
+    submitted_at: Optional[datetime] = None
+
+
+class FinalizeReviewRequest(BaseModel):
+    review_decision: str = Field(..., description="ACCEPTED or INVALIDATED")
+    essay_scores: Dict[str, float] = Field(default_factory=dict)
+    instructor_note: Optional[str] = None

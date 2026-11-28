@@ -258,6 +258,8 @@ class QuizSubmission(Base):
     is_flagged = Column(Boolean, nullable=False, default=False)
     violation_logs = Column(JSONB, nullable=False, default=list)
     violation_logs_json = Column(JSONB, nullable=False, default=list)
+    review_decision = Column(String(30), nullable=True)
+    instructor_note = Column(Text, nullable=True)
     status = Column(String(30), nullable=False, default="IN_PROGRESS")
 
 

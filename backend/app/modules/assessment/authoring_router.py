@@ -24,6 +24,7 @@ from app.modules.assessment.authoring_schemas import (
     RubricResponse,
     RubricSaveRequest,
     StudentGroupCreateRequest,
+    StudentGroupJoinRequest,
     StudentGroupResponse,
     TopicCreateRequest,
     TopicResponse,
@@ -216,6 +217,49 @@ async def create_group(
         id=group.id,
         assignment_id=group.assignment_id,
         group_name=group.group_name,
+        join_code=group.join_code,
+        topic_id=group.topic_id,
+        topic_code=group.topic.topic_code if group.topic else None,
+        topic_title=group.topic.title if group.topic else None,
+        leader_student_id=group.leader_student_id,
+        is_finalized=group.is_finalized,
+        created_at=group.created_at,
+        updated_at=group.updated_at,
+        members=[
+            {
+                "id": m.id,
+                "group_id": m.group_id,
+                "student_id": m.student_id,
+                "student_name": f"{m.student.first_name} {m.student.last_name}" if m.student else None,
+                "student_email": m.student.email if m.student else None,
+                "role": m.role,
+                "joined_at": m.joined_at,
+            }
+            for m in group.members
+        ],
+    )
+
+
+@router.post(
+    "/assignments/{assignment_id}/groups/join",
+    response_model=StudentGroupResponse,
+)
+async def join_group_by_code(
+    assignment_id: uuid.UUID,
+    payload: StudentGroupJoinRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: CurrentUser = Depends(get_current_user),
+):
+    group = await GroupService(db).join_group_by_code(
+        assignment_id=assignment_id,
+        user=current_user.user,
+        join_code=payload.join_code,
+    )
+    return StudentGroupResponse(
+        id=group.id,
+        assignment_id=group.assignment_id,
+        group_name=group.group_name,
+        join_code=group.join_code,
         topic_id=group.topic_id,
         topic_code=group.topic.topic_code if group.topic else None,
         topic_title=group.topic.title if group.topic else None,
@@ -257,6 +301,7 @@ async def select_group_topic(
         id=group.id,
         assignment_id=group.assignment_id,
         group_name=group.group_name,
+        join_code=group.join_code,
         topic_id=group.topic_id,
         topic_code=group.topic.topic_code if group.topic else None,
         topic_title=group.topic.title if group.topic else None,

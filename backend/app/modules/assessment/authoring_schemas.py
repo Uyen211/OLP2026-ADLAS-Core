@@ -338,6 +338,7 @@ class StudentGroupResponse(BaseModel):
     id: uuid.UUID
     assignment_id: uuid.UUID
     group_name: str
+    join_code: Optional[str] = None
     topic_id: Optional[uuid.UUID] = None
     topic_code: Optional[str] = None
     topic_title: Optional[str] = None
@@ -348,6 +349,10 @@ class StudentGroupResponse(BaseModel):
     updated_at: datetime
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class StudentGroupJoinRequest(BaseModel):
+    join_code: str = Field(..., min_length=4, max_length=10)
 
 
 # ----------------------------------------------------------------------

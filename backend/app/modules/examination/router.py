@@ -11,12 +11,14 @@ from app.core.database import get_db
 from app.modules.examination.schemas import (
     ActiveSessionResponse,
     AttemptResultResponse,
+    AttemptReviewSummaryResponse,
     AttemptStartRequest,
     AttemptStartResponse,
     AutosaveRequest,
     AutosaveResponse,
     ExtractionBatchSaveRequest,
     ExtractionPreviewResponse,
+    FinalizeReviewRequest,
     PasscodeRegenerateResponse,
     PublishGradesResponse,
     QuestionBankCreate,
@@ -25,6 +27,7 @@ from app.modules.examination.schemas import (
     QuestionDeleteResponse,
     QuestionFolderCreate,
     QuestionFolderResponse,
+    QuestionFolderStatsResponse,
     QuestionResponse,
     QuestionUpdate,
     QuizCreate,
@@ -37,6 +40,8 @@ from app.modules.examination.schemas import (
     RegradeSummaryResponse,
     SubmitAttemptRequest,
     SubmitAttemptResponse,
+    ViolationRecordRequest,
+    ViolationRecordResponse,
 )
 from app.modules.examination.service import ExaminationService
 from app.modules.identity.dependencies import CurrentUser, get_current_user
@@ -93,6 +98,18 @@ async def delete_question_folder(
 ) -> Response:
     await ExaminationService(db).delete_question_folder(folder_id, current.user)
     return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@router.get(
+    "/courses/{course_id}/questions/folder-stats",
+    response_model=QuestionFolderStatsResponse,
+)
+async def get_question_folder_stats(
+    course_id: uuid.UUID,
+    current: CurrentUser = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> QuestionFolderStatsResponse:
+    return await ExaminationService(db).get_question_folder_stats(course_id, current.user)
 
 
 # ------------------------------------------------------------------
@@ -371,6 +388,57 @@ async def autosave_attempt(
     db: AsyncSession = Depends(get_db),
 ) -> AutosaveResponse:
     return await ExaminationService(db).autosave_attempt(
+        submission_id=submission_id,
+        payload=payload,
+        actor=current.user,
+    )
+
+
+@router.post(
+    "/attempts/{submission_id}/violations",
+    response_model=ViolationRecordResponse,
+)
+async def record_attempt_violation(
+    submission_id: uuid.UUID,
+    payload: ViolationRecordRequest,
+    current: CurrentUser = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> ViolationRecordResponse:
+    return await ExaminationService(db).record_attempt_violation(
+        submission_id=submission_id,
+        payload=payload,
+        actor=current.user,
+    )
+
+
+@router.get(
+    "/quizzes/{quiz_id}/attempts",
+    response_model=List[AttemptReviewSummaryResponse],
+)
+async def list_quiz_attempts(
+    quiz_id: uuid.UUID,
+    flagged_only: bool = Query(False),
+    current: CurrentUser = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> List[AttemptReviewSummaryResponse]:
+    return await ExaminationService(db).list_quiz_attempts(
+        quiz_id=quiz_id,
+        flagged_only=flagged_only,
+        actor=current.user,
+    )
+
+
+@router.post(
+    "/attempts/{submission_id}/finalize-review",
+    response_model=AttemptReviewSummaryResponse,
+)
+async def finalize_attempt_review(
+    submission_id: uuid.UUID,
+    payload: FinalizeReviewRequest,
+    current: CurrentUser = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> AttemptReviewSummaryResponse:
+    return await ExaminationService(db).finalize_attempt_review(
         submission_id=submission_id,
         payload=payload,
         actor=current.user,

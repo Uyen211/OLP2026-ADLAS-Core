@@ -20,7 +20,7 @@ from app.modules.examination.models import (
     QuizRegrade,
     QuizSubmission,
 )
-from app.modules.system.models import OutboxEvent
+from app.modules.system.models import OutboxEvent, User
 
 
 class ExaminationRepository:
@@ -627,6 +627,83 @@ class ExaminationRepository:
     # ------------------------------------------------------------------
     # Transactional Outbox Events
     # ------------------------------------------------------------------
+    async def get_question_folder_stats(self, course_id: uuid.UUID) -> List[Dict[str, Any]]:
+        """Return breakdown of questions count grouped by folder and difficulty (T2-P-M4-02)."""
+        folders_stmt = (
+            select(QuestionFolder)
+            .where(QuestionFolder.course_id == course_id)
+            .order_by(QuestionFolder.created_at.asc(), QuestionFolder.name.asc())
+        )
+        folders_res = await self.db.execute(folders_stmt)
+        folders = list(folders_res.scalars().all())
+
+        counts_stmt = (
+            select(
+                Question.folder_id,
+                Question.difficulty,
+                func.count(Question.id),
+            )
+            .join(QuestionBank, QuestionBank.id == Question.bank_id)
+            .where(
+                QuestionBank.course_id == course_id,
+                Question.is_active.is_(True),
+            )
+            .group_by(Question.folder_id, Question.difficulty)
+        )
+        counts_res = await self.db.execute(counts_stmt)
+
+        data_by_folder: Dict[Any, Dict[str, int]] = {}
+        for f_id, diff, count in counts_res.all():
+            if f_id not in data_by_folder:
+                data_by_folder[f_id] = {"EASY": 0, "MEDIUM": 0, "HARD": 0, "total": 0}
+            diff_key = (diff or "MEDIUM").upper()
+            if diff_key not in data_by_folder[f_id]:
+                data_by_folder[f_id][diff_key] = 0
+            data_by_folder[f_id][diff_key] += int(count)
+            data_by_folder[f_id]["total"] += int(count)
+
+        results: List[Dict[str, Any]] = []
+        for f in folders:
+            counts = data_by_folder.get(f.id, {"EASY": 0, "MEDIUM": 0, "HARD": 0, "total": 0})
+            results.append({
+                "folder_id": f.id,
+                "name": f.name,
+                "EASY": counts.get("EASY", 0),
+                "MEDIUM": counts.get("MEDIUM", 0),
+                "HARD": counts.get("HARD", 0),
+                "total": counts.get("total", 0),
+            })
+
+        if None in data_by_folder:
+            counts = data_by_folder[None]
+            results.append({
+                "folder_id": None,
+                "name": "Chua phan loai",
+                "EASY": counts.get("EASY", 0),
+                "MEDIUM": counts.get("MEDIUM", 0),
+                "HARD": counts.get("HARD", 0),
+                "total": counts.get("total", 0),
+            })
+
+        return results
+
+    async def list_quiz_submissions_with_users(
+        self,
+        quiz_id: uuid.UUID,
+        flagged_only: bool = False,
+    ) -> List[Any]:
+        """Query quiz submissions joined with User for instructor Alert Timeline review (T2-P-M4-04)."""
+        stmt = (
+            select(QuizSubmission, User)
+            .join(User, User.id == QuizSubmission.user_id)
+            .where(QuizSubmission.quiz_id == quiz_id)
+        )
+        if flagged_only:
+            stmt = stmt.where(QuizSubmission.is_flagged.is_(True))
+        stmt = stmt.order_by(QuizSubmission.started_at.desc())
+        res = await self.db.execute(stmt)
+        return list(res.all())
+
     async def enqueue_outbox_event(
         self,
         event_type: str,

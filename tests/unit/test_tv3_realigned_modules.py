@@ -16,9 +16,12 @@ from app.modules.assessment.authoring_schemas import (
 )
 from app.modules.assessment.exceptions import (
     GroupFormationDeadlinePassedException,
+    GroupFullException,
     GroupTopicFullException,
+    InvalidJoinCodeException,
     PeerReviewNotMemberException,
     PeerReviewSelfNotAllowedException,
+    StudentAlreadyInGroupException,
 )
 from app.modules.assessment.group_service import GroupService
 from app.modules.assessment.models import (
@@ -44,9 +47,15 @@ from app.modules.examination.snapshot import (
     sanitize_options_for_student,
     select_questions_by_draw_rules,
 )
+from app.modules.examination.schemas import (
+    FinalizeReviewRequest,
+    ViolationRecordRequest,
+)
+from app.modules.examination.service import ExaminationService
 from app.modules.identity.exceptions import UserAlreadyExistsException
 from app.modules.identity.schemas import RegisterRequest
 from app.modules.identity.service import AuthService
+from app.modules.system.models import User
 
 
 # ----------------------------------------------------------------------
@@ -580,3 +589,237 @@ class TestSnapshotAndShuffle:
         assert len(opts) == 2
         opt_ids = {o["id"] for o in opts}
         assert opt_ids == {"opt1", "opt2"}
+
+
+class TestGroupJoinByCode:
+    """Tests for T2-P-M3-02 group join by 6-char code and conflict prevention."""
+
+    @pytest.mark.asyncio
+    async def test_join_group_by_code_success(self):
+        db = AsyncMock()
+        db.add = MagicMock()
+        service = GroupService(db)
+        aid = uuid.uuid4()
+        user = User(id=uuid.uuid4(), email="student@adlas.edu.vn")
+        assignment = Assignment(id=aid, group_formation_deadline=None, group_max_size=4)
+        service._get_assignment = AsyncMock(return_value=assignment)
+
+        group = StudentGroup(
+            id=uuid.uuid4(),
+            assignment_id=aid,
+            group_name="Team Alpha",
+            join_code="ABC123",
+            members=[],
+        )
+        # Mock group lookup
+        res_group = MagicMock()
+        res_group.scalar_one_or_none.return_value = group
+
+        # Mock membership check (not in any group yet)
+        res_check = MagicMock()
+        res_check.scalar_one_or_none.return_value = None
+
+        db.execute = AsyncMock(side_effect=[res_group, res_check])
+        service.get_group = AsyncMock(return_value=group)
+
+        joined = await service.join_group_by_code(aid, user, "abc123")
+        assert joined.id == group.id
+        assert db.add.called
+
+    @pytest.mark.asyncio
+    async def test_join_group_by_code_invalid(self):
+        db = AsyncMock()
+        service = GroupService(db)
+        aid = uuid.uuid4()
+        user = User(id=uuid.uuid4(), email="student@adlas.edu.vn")
+        assignment = Assignment(id=aid, group_formation_deadline=None)
+        service._get_assignment = AsyncMock(return_value=assignment)
+
+        res_group = MagicMock()
+        res_group.scalar_one_or_none.return_value = None
+        db.execute = AsyncMock(return_value=res_group)
+
+        with pytest.raises(InvalidJoinCodeException) as exc:
+            await service.join_group_by_code(aid, user, "INVALID")
+        assert exc.value.detail["code"] == "E-GRP-07"
+
+    @pytest.mark.asyncio
+    async def test_join_group_by_code_already_member(self):
+        db = AsyncMock()
+        service = GroupService(db)
+        aid = uuid.uuid4()
+        user = User(id=uuid.uuid4(), email="student@adlas.edu.vn")
+        assignment = Assignment(id=aid, group_formation_deadline=None)
+        service._get_assignment = AsyncMock(return_value=assignment)
+
+        group = StudentGroup(id=uuid.uuid4(), assignment_id=aid, group_name="Team Alpha", join_code="ABC123", members=[])
+        res_group = MagicMock()
+        res_group.scalar_one_or_none.return_value = group
+
+        # User is already in a group for this assignment
+        res_check = MagicMock()
+        res_check.scalar_one_or_none.return_value = MagicMock()
+
+        db.execute = AsyncMock(side_effect=[res_group, res_check])
+
+        with pytest.raises(StudentAlreadyInGroupException) as exc:
+            await service.join_group_by_code(aid, user, "ABC123")
+        assert exc.value.detail["code"] == "E-GRP-05"
+
+    @pytest.mark.asyncio
+    async def test_join_group_by_code_group_full(self):
+        db = AsyncMock()
+        service = GroupService(db)
+        aid = uuid.uuid4()
+        user = User(id=uuid.uuid4(), email="student@adlas.edu.vn")
+        assignment = Assignment(id=aid, group_formation_deadline=None, group_max_size=2)
+        service._get_assignment = AsyncMock(return_value=assignment)
+
+        group = StudentGroup(
+            id=uuid.uuid4(),
+            assignment_id=aid,
+            group_name="Team Alpha",
+            join_code="ABC123",
+            members=[MagicMock(), MagicMock()],  # already 2 members
+        )
+        res_group = MagicMock()
+        res_group.scalar_one_or_none.return_value = group
+
+        res_check = MagicMock()
+        res_check.scalar_one_or_none.return_value = None
+
+        db.execute = AsyncMock(side_effect=[res_group, res_check])
+
+        with pytest.raises(GroupFullException) as exc:
+            await service.join_group_by_code(aid, user, "ABC123")
+        assert exc.value.detail["code"] == "E-GRP-06"
+
+
+class TestExaminationGapFeatures:
+    """Tests for T2-P-M4-02 folder stats, T2-P-M4-03 violations, and T2-P-M4-04 Alert Timeline."""
+
+    @pytest.mark.asyncio
+    async def test_folder_stats_aggregation(self):
+        db = AsyncMock()
+        service = ExaminationService(db)
+        cid = uuid.uuid4()
+        actor = User(id=uuid.uuid4(), email="teacher@adlas.edu.vn")
+        service._assert_course_member = AsyncMock()
+        fid = uuid.uuid4()
+        service.repo.get_question_folder_stats = AsyncMock(
+            return_value=[
+                {"folder_id": fid, "name": "Chuong 1", "EASY": 5, "MEDIUM": 10, "HARD": 3, "total": 18}
+            ]
+        )
+
+        resp = await service.get_question_folder_stats(cid, actor)
+        assert len(resp.folders) == 1
+        assert resp.folders[0].folder_id == fid
+        assert resp.folders[0].total == 18
+
+    @pytest.mark.asyncio
+    async def test_violation_recording_triggers_flag(self):
+        db = AsyncMock()
+        service = ExaminationService(db)
+        sid = uuid.uuid4()
+        actor = User(id=uuid.uuid4(), email="student@adlas.edu.vn")
+        quiz = MagicMock(id=uuid.uuid4(), max_strikes=3)
+        sub = QuizSubmission(
+            id=sid,
+            quiz_id=quiz.id,
+            user_id=actor.id,
+            strike_count=2,
+            is_flagged=False,
+            violation_logs_json=[],
+            status="IN_PROGRESS",
+        )
+        service.repo.get_submission_by_id = AsyncMock(return_value=sub)
+        service.repo.get_quiz_by_id = AsyncMock(return_value=quiz)
+
+        payload = ViolationRecordRequest(violation_type="TAB_SWITCH")
+        resp = await service.record_attempt_violation(sid, payload, actor)
+        assert resp.strike_count == 3
+        assert resp.is_flagged is True
+        assert sub.is_flagged is True
+        assert len(sub.violation_logs_json) == 1
+
+    @pytest.mark.asyncio
+    async def test_finalize_review_accepted(self):
+        db = AsyncMock()
+        service = ExaminationService(db)
+        sid = uuid.uuid4()
+        cid = uuid.uuid4()
+        actor = User(id=uuid.uuid4(), email="teacher@adlas.edu.vn")
+        quiz = MagicMock(id=uuid.uuid4(), course_id=cid)
+        sub = QuizSubmission(
+            id=sid,
+            quiz_id=quiz.id,
+            user_id=uuid.uuid4(),
+            attempt_number=1,
+            started_at=datetime.now(timezone.utc),
+            auto_score=Decimal("6.50"),
+            final_score=None,
+            is_flagged=True,
+            status="SUBMITTED",
+        )
+        service.repo.get_submission_by_id = AsyncMock(return_value=sub)
+        service.repo.get_quiz_by_id = AsyncMock(return_value=quiz)
+        service._assert_instructor = AsyncMock()
+        service.repo.get_best_score_for_user = AsyncMock(return_value=Decimal("8.50"))
+        service.repo.enqueue_outbox_event = AsyncMock()
+
+        user_mock = MagicMock(first_name="Nguyen", last_name="An", email="an@adlas.edu.vn")
+        u_res = MagicMock()
+        u_res.scalar_one_or_none.return_value = user_mock
+        db.execute = AsyncMock(return_value=u_res)
+
+        payload = FinalizeReviewRequest(
+            review_decision="ACCEPTED",
+            essay_scores={"q1": 2.0},
+            instructor_note="Bai thi hop le sau kiem tra.",
+        )
+        resp = await service.finalize_attempt_review(sid, payload, actor)
+        assert resp.review_decision == "ACCEPTED"
+        assert resp.final_score == Decimal("8.50")
+        assert sub.final_score == Decimal("8.50")
+        assert sub.status == "FINALIZED"
+
+    @pytest.mark.asyncio
+    async def test_finalize_review_invalidated(self):
+        db = AsyncMock()
+        service = ExaminationService(db)
+        sid = uuid.uuid4()
+        cid = uuid.uuid4()
+        actor = User(id=uuid.uuid4(), email="teacher@adlas.edu.vn")
+        quiz = MagicMock(id=uuid.uuid4(), course_id=cid)
+        sub = QuizSubmission(
+            id=sid,
+            quiz_id=quiz.id,
+            user_id=uuid.uuid4(),
+            attempt_number=1,
+            started_at=datetime.now(timezone.utc),
+            auto_score=Decimal("7.00"),
+            final_score=None,
+            is_flagged=True,
+            status="SUBMITTED",
+        )
+        service.repo.get_submission_by_id = AsyncMock(return_value=sub)
+        service.repo.get_quiz_by_id = AsyncMock(return_value=quiz)
+        service._assert_instructor = AsyncMock()
+        service.repo.get_best_score_for_user = AsyncMock(return_value=Decimal("0.00"))
+        service.repo.enqueue_outbox_event = AsyncMock()
+
+        user_mock = MagicMock(first_name="Tran", last_name="Binh", email="binh@adlas.edu.vn")
+        u_res = MagicMock()
+        u_res.scalar_one_or_none.return_value = user_mock
+        db.execute = AsyncMock(return_value=u_res)
+
+        payload = FinalizeReviewRequest(
+            review_decision="INVALIDATED",
+            instructor_note="Vi pham chuyen tab qua 3 lan.",
+        )
+        resp = await service.finalize_attempt_review(sid, payload, actor)
+        assert resp.review_decision == "INVALIDATED"
+        assert resp.final_score == Decimal("0.00")
+        assert sub.final_score == Decimal("0.00")
+        assert sub.status == "FINALIZED"

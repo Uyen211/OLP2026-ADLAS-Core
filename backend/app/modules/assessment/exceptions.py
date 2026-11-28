@@ -275,3 +275,30 @@ class PeerReviewNotMemberException(ADLASException):
             detail="Peer review can only be submitted for members within your own group.",
             status_code=status.HTTP_403_FORBIDDEN,
         )
+
+
+class StudentAlreadyInGroupException(ADLASException):
+    def __init__(self):
+        super().__init__(
+            code="E-GRP-05",
+            detail="Student is already a member of a group for this assignment.",
+            status_code=status.HTTP_409_CONFLICT,
+        )
+
+
+class GroupFullException(ADLASException):
+    def __init__(self):
+        super().__init__(
+            code="E-GRP-06",
+            detail="Student group has reached its maximum member capacity.",
+            status_code=status.HTTP_409_CONFLICT,
+        )
+
+
+class InvalidJoinCodeException(ADLASException):
+    def __init__(self, code_val: str):
+        super().__init__(
+            code="E-GRP-07",
+            detail=f"Invalid or expired group join code: '{code_val}'.",
+            status_code=status.HTTP_404_NOT_FOUND,
+        )
