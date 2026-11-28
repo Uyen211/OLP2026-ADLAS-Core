@@ -244,6 +244,16 @@ export const LoginPage: React.FC = () => {
           <LogIn className="h-4 w-4" />
           <span>{isLocked ? "Tài khoản đang tạm khóa" : "Đăng nhập"}</span>
         </MmButton>
+
+        <div className="mt-4 text-center font-mm-ui text-sm text-mm-text-secondary border-t border-mm-divider pt-4">
+          <span>Chưa có tài khoản? </span>
+          <Link
+            to="/register"
+            className="font-semibold text-mm-blue-hover hover:text-mm-blue-active underline-offset-2 hover:underline"
+          >
+            Đăng ký ngay
+          </Link>
+        </div>
       </form>
     </AuthLayout>
   );

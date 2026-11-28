@@ -24,6 +24,7 @@ import { useAuthStore } from "../../stores/authStore";
 import { ToastContainer } from "./components/Toast";
 import { ForgotPasswordPage } from "./pages/auth/ForgotPasswordPage";
 import { LoginPage } from "./pages/auth/LoginPage";
+import { RegisterPage } from "../../features/tv3/auth/pages/RegisterPage";
 import { MfaVerifyPage } from "./pages/auth/MfaVerifyPage";
 import { ResetPasswordPage } from "./pages/auth/ResetPasswordPage";
 import { CourseDetailPage } from "./pages/course/CourseDetailPage";
@@ -66,6 +67,7 @@ export const MainApp: React.FC = () => {
       <ToastContainer />
       <Routes>
         <Route path="/login" element={<LoginPage />} />
+        <Route path="/register" element={<RegisterPage />} />
         <Route path="/mfa-verify" element={<MfaVerifyPage />} />
         <Route path="/forgot-password" element={<ForgotPasswordPage />} />
         <Route path="/reset-password" element={<ResetPasswordPage />} />

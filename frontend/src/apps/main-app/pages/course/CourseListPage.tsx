@@ -30,6 +30,7 @@ import { TeacherLayout } from "../../layouts/TeacherLayout";
 import { CloneTemplateModal } from "./CloneTemplateModal";
 import { CreateCourseModal } from "./CreateCourseModal";
 import { JoinCourseModal } from "./JoinCourseModal";
+import { JoinByCodeBanner } from "../../../../features/tv3/course/components/JoinByCodeBanner";
 
 type FilterValue = "all" | "teaching" | "learning" | "template";
 
@@ -197,6 +198,8 @@ export const CourseListPage: React.FC = () => {
             />
           </div>
         </div>
+
+        <JoinByCodeBanner onSuccess={() => loadCourses()} className="mb-6" />
 
         {loading ? (
           <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">

@@ -248,4 +248,8 @@ export const courseService = {
       method: "POST",
     });
   },
+
+  exportRosterXlsx(courseId: string, filename = "danh-sach-lop.xlsx"): Promise<void> {
+    return httpDownloadBlob(`/courses/${courseId}/enrollments/export-roster`, filename);
+  },
 };

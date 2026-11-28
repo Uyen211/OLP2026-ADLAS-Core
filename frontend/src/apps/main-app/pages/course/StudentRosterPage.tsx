@@ -32,6 +32,7 @@ import { TeacherLayout } from "../../layouts/TeacherLayout";
 import { AddStudentModal } from "./AddStudentModal";
 import { GroupPartitionModal } from "./GroupPartitionModal";
 import { RosterImportModal } from "./RosterImportModal";
+import { RosterExportButton } from "../../../../features/tv3/course/components/RosterExportButton";
 
 export interface StudentRosterPageProps {
   courseIdProp?: string;
@@ -348,6 +349,7 @@ export const StudentRosterPage: React.FC<StudentRosterPageProps> = ({
                 <UserPlus className="h-4 w-4" />
                 <span>Thêm sinh viên lẻ</span>
               </MmButton>
+              <RosterExportButton courseId={courseId} courseCode={course?.course_code} />
               <MmButton
                 variant="secondary"
                 disabled={isReadOnly || totalStudents === 0}

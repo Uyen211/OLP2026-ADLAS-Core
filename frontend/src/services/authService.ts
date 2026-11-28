@@ -10,12 +10,23 @@ import type {
   MeResponse,
   MfaSetupResponse,
   MfaVerifyRequest,
+  RegisterRequest,
+  RegisterResponse,
   ResetPasswordRequest,
   TokenResponse,
 } from "../types/auth";
 import { httpRequest } from "./httpClient";
 
 export const authService = {
+  register(payload: RegisterRequest): Promise<RegisterResponse> {
+    return httpRequest<RegisterResponse>("/auth/register", {
+      method: "POST",
+      body: payload,
+      skipAuth: true,
+      skipAuthRefresh: true,
+    });
+  },
+
   login(payload: LoginRequest): Promise<LoginResponse> {
     return httpRequest<LoginResponse>("/auth/login", {
       method: "POST",
