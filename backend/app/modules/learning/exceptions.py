@@ -105,3 +105,38 @@ class UncompletedCheckpointsException(ADLASException):
             detail=detail,
             status_code=status.HTTP_409_CONFLICT,
         )
+
+
+class NoTextLayerException(ADLASException):
+    """Document is a scanned image or has no extractable text layer (E-RAG-01)."""
+
+    def __init__(
+        self,
+        detail: str = (
+            "Tài liệu này là bản scan hình ảnh hoặc không có lớp văn bản có thể đọc được. "
+            "Hệ thống không thể bóc tách nội dung chương mục tự động. "
+            "Vui lòng tải lên tệp tài liệu gốc có văn bản hoặc tự nhập câu hỏi thủ công."
+        ),
+    ):
+        super().__init__(
+            code="NO_TEXT_LAYER",
+            detail=detail,
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+        )
+
+
+class SectionTooShortException(ADLASException):
+    """Selected section has fewer than 100 words (E-RAG-02)."""
+
+    def __init__(
+        self,
+        detail: str = (
+            "Mục được chọn quá ít nội dung thông tin (dưới 100 từ) để tạo câu hỏi có chất lượng sư phạm. "
+            "Vui lòng chọn phân đoạn dài hơn hoặc gộp chung với mục kế bên."
+        ),
+    ):
+        super().__init__(
+            code="SECTION_TOO_SHORT",
+            detail=detail,
+            status_code=status.HTTP_400_BAD_REQUEST,
+        )

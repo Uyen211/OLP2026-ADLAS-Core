@@ -7,6 +7,7 @@ from datetime import datetime
 from typing import List, Optional
 import uuid
 from pydantic import BaseModel, ConfigDict, Field
+from app.modules.course.enums import BloomLevel
 from app.modules.learning.enums import MaterialType
 
 
@@ -135,6 +136,8 @@ class CheckpointCreate(BaseModel):
     time_limit_seconds: int = Field(10, ge=5, le=120, description="Thời gian đếm ngược (giây)")
     rewind_seconds: int = Field(15, ge=0, le=120, description="Thời gian tự động lùi khi sai (giây)")
     lo_id: Optional[uuid.UUID] = Field(None, description="Chuẩn đầu ra liên kết")
+    bloom_level: Optional[BloomLevel] = Field(None, description="Mức độ nhận thức Bloom")
+    source_citation: Optional[str] = Field(None, description="Trích dẫn nguồn từ tài liệu")
 
 
 class CheckpointUpdate(BaseModel):
@@ -167,6 +170,8 @@ class CheckpointInstructorResponse(BaseModel):
     options: Optional[dict] = None
     correct_option: Optional[str] = None
     expected_concept: Optional[str] = None
+    bloom_level: Optional[str] = None
+    source_citation: Optional[str] = None
     is_blocking: bool
     time_limit_seconds: int
     rewind_seconds: int
@@ -187,6 +192,8 @@ class CheckpointStudentResponse(BaseModel):
     question_type: str
     options: Optional[dict] = None
     expected_concept: Optional[str] = None
+    bloom_level: Optional[str] = None
+    source_citation: Optional[str] = None
     is_blocking: bool
     time_limit_seconds: int
     rewind_seconds: int
@@ -226,3 +233,68 @@ class MaterialStructuredContentResponse(BaseModel):
     content_kind: str  # PDF_PAGES | SLIDE_DECK | DOC_SECTIONS | UNSUPPORTED
     total_items: int
     items: List[MaterialPageItem]
+
+
+# -----------------------------------------------------------------------------
+# AI Section Extraction & Grounded Checkpoint Generation (Task T2-I-M2-04)
+# -----------------------------------------------------------------------------
+class SectionItem(BaseModel):
+    """Detected chapter/section from a PDF or PPTX learning material."""
+
+    section_id: int = Field(..., ge=1)
+    title: str
+    start_page: int = Field(..., ge=1)
+    end_page: int = Field(..., ge=1)
+    word_count: int = Field(..., ge=0)
+    summary: str = ""
+
+
+class MaterialSectionsResponse(BaseModel):
+    """Response containing detected sections for a PDF or PPTX material."""
+
+    material_id: uuid.UUID
+    total_pages: int
+    sections: List[SectionItem]
+
+
+class GenerateCheckpointSuggestionsRequest(BaseModel):
+    """Request payload to generate grounded multiple-choice checkpoints from selected sections."""
+
+    section_ids: List[int] = Field(..., min_length=1, description="Danh sách ID phân đoạn được chọn")
+    bloom_level: BloomLevel = Field(BloomLevel.UNDERSTAND, description="Mức độ nhận thức Bloom")
+    num_questions: int = Field(3, ge=1, le=5, description="Số lượng câu hỏi gợi ý")
+    lo_id: Optional[uuid.UUID] = Field(None, description="Chuẩn đầu ra gắn kèm")
+
+
+class CheckpointSuggestionItem(BaseModel):
+    """Single AI-generated grounded multiple-choice question preview."""
+
+    temp_id: str
+    question_text: str
+    options: dict
+    correct_option: str
+    bloom_level: BloomLevel
+    lo_id: Optional[uuid.UUID] = None
+    citation_page: int
+    citation_paragraph: int
+    citation: str
+    evidence_quote: str
+
+
+class CheckpointSuggestionsResponse(BaseModel):
+    """Response containing grounded checkpoint suggestions for 1-click approval."""
+
+    suggestions: List[CheckpointSuggestionItem]
+
+
+class BatchCheckpointCreateRequest(BaseModel):
+    """Payload to save multiple approved AI-generated checkpoints in 1 click."""
+
+    checkpoints: List[CheckpointCreate] = Field(..., min_length=1)
+
+
+class BatchCheckpointCreateResponse(BaseModel):
+    """Response returned after saving batch checkpoints."""
+
+    created_count: int
+    checkpoints: List[CheckpointInstructorResponse]

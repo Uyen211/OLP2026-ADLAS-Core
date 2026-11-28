@@ -82,6 +82,7 @@ class LearningMaterial(Base):
     is_mandatory = Column(Boolean, nullable=False, default=True)
     est_duration_minutes = Column(Integer, default=30)
     is_published = Column(Boolean, nullable=False, default=False)
+    sections_cache = Column(JSONB, nullable=True)
     created_at = Column(
         DateTime(timezone=True),
         nullable=False,
@@ -124,6 +125,8 @@ class MaterialCheckpoint(Base):
     options = Column(JSONB, nullable=True)
     correct_option = Column(String(10), nullable=True)
     expected_concept = Column(Text, nullable=True)
+    bloom_level = Column(String(20), nullable=True)
+    source_citation = Column(Text, nullable=True)
     is_blocking = Column(Boolean, nullable=False, default=True)
     time_limit_seconds = Column(Integer, nullable=False, default=10)
     rewind_seconds = Column(Integer, nullable=False, default=15)
