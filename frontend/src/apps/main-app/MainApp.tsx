@@ -26,6 +26,7 @@ import { ForgotPasswordPage } from "./pages/auth/ForgotPasswordPage";
 import { LoginPage } from "./pages/auth/LoginPage";
 import { RegisterPage } from "../../features/tv3/auth/pages/RegisterPage";
 import { ProjectGroupWorkspacePage } from "../../features/tv3/assessment/pages/ProjectGroupWorkspacePage";
+import { PeerReviewPage } from "../../features/tv3/assessment/pages/PeerReviewPage";
 import { MfaVerifyPage } from "./pages/auth/MfaVerifyPage";
 import { ResetPasswordPage } from "./pages/auth/ResetPasswordPage";
 import { CourseDetailPage } from "./pages/course/CourseDetailPage";
@@ -118,6 +119,22 @@ export const MainApp: React.FC = () => {
           element={
             <ProtectedRoute>
               <ProjectGroupWorkspacePage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/courses/:courseId/assignments/:assignmentId/peer-review"
+          element={
+            <ProtectedRoute>
+              <PeerReviewPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/assignments/:assignmentId/peer-review"
+          element={
+            <ProtectedRoute>
+              <PeerReviewPage />
             </ProtectedRoute>
           }
         />

@@ -415,6 +415,18 @@ export const AssignmentDetailPage: React.FC = () => {
                 <span>Nhóm đồ án & Giai đoạn</span>
               </MmButton>
             </Link>
+            <Link
+              to={
+                resolvedCourseId
+                  ? `/courses/${resolvedCourseId}/assignments/${assignment.id}/peer-review`
+                  : `/assignments/${assignment.id}/peer-review`
+              }
+            >
+              <MmButton variant="secondary" size="sm">
+                <CheckCircle2 className="h-4 w-4" />
+                <span>Đánh giá chéo Fi</span>
+              </MmButton>
+            </Link>
             <PillTabs
               items={[
                 { value: "review", label: "Kiểm tra bài nộp & Viva (Giảng viên)" },
