@@ -7,7 +7,7 @@ import csv
 from dataclasses import dataclass, field
 import io
 import re
-from typing import Dict, Iterator, List, Optional, Sequence, Set, Tuple
+from typing import Any, Dict, Iterator, List, Optional, Sequence, Set, Tuple
 import unicodedata
 import openpyxl
 from app.modules.course.enums import RosterRowStatus
@@ -286,6 +286,47 @@ def build_roster_template_xlsx() -> bytes:
     ws.append(["MSSV", "Ho va ten", "Email"])
     ws.append(["SV2026001", "Nguyen Van An", "an.nv@adlas.edu.vn"])
     ws.append(["SV2026002", "Tran Thi Binh", "binh.tt@adlas.edu.vn"])
+
+    buffer = io.BytesIO()
+    wb.save(buffer)
+    wb.close()
+    return buffer.getvalue()
+
+
+def sanitize_formula_injection(val: Optional[str]) -> str:
+    """Sanitize spreadsheet cell against Formula Injection attacks."""
+    if val is None:
+        return ""
+    text = str(val).strip()
+    if text and text[0] in ("=", "+", "-", "@", "\t", "\r"):
+        return "'" + text
+    return text
+
+
+def build_roster_export_xlsx(
+    course_code: str,
+    course_name: str,
+    enrollments_data: Sequence[Dict[str, Any]],
+) -> bytes:
+    """Generate an .xlsx roster workbook with formula injection protection (T2-P-M1-03)."""
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "DanhSachLop"
+
+    ws.append([f"Danh sach lop: {course_code} - {course_name}"])
+    ws.append([])
+    ws.append(["STT", "MSSV", "Ho va ten", "Email", "Vai tro", "Trang thai", "Ngay tham gia"])
+
+    for idx, item in enumerate(enrollments_data, start=1):
+        ws.append([
+            idx,
+            sanitize_formula_injection(item.get("user_code")),
+            sanitize_formula_injection(item.get("full_name")),
+            sanitize_formula_injection(item.get("email")),
+            sanitize_formula_injection(item.get("role")),
+            sanitize_formula_injection(item.get("status")),
+            str(item.get("enrolled_at", "")),
+        ])
 
     buffer = io.BytesIO()
     wb.save(buffer)

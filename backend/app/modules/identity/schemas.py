@@ -1,9 +1,42 @@
 # Copyright (c) 2026 ADLAS Team - OLP 2026 Open Source Software Track
 # SPDX-License-Identifier: MIT
 
+from datetime import datetime
 import uuid
 from typing import List, Literal, Optional
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, EmailStr, Field, field_validator
+
+
+class RegisterRequest(BaseModel):
+    """User self-registration payload (T2-P-M1-01)."""
+
+    email: EmailStr = Field(..., max_length=150)
+    password: str = Field(..., min_length=8, max_length=128)
+    full_name: str = Field(..., min_length=2, max_length=150)
+    role: Literal["STUDENT", "INSTRUCTOR"] = "STUDENT"
+
+    @field_validator("password")
+    @classmethod
+    def validate_password_strength(cls, value: str) -> str:
+        if len(value) < 8:
+            raise ValueError("Mat khau phai co it nhat 8 ky tu.")
+        has_upper = any(c.isupper() for c in value)
+        has_lower = any(c.islower() for c in value)
+        has_digit = any(c.isdigit() for c in value)
+        if not (has_upper and has_lower and has_digit):
+            raise ValueError("Mat khau phai chua ca chu hoa, chu thuong va chu so.")
+        return value
+
+
+class RegisterResponse(BaseModel):
+    """User self-registration response (T2-P-M1-01)."""
+
+    id: uuid.UUID
+    email: str
+    full_name: str
+    role: str
+    status: str
+    created_at: datetime
 
 
 class CourseRoleClaim(BaseModel):

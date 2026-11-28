@@ -344,6 +344,23 @@ async def confirm_roster_upload(
     )
 
 
+@router.get("/{course_id}/roster/export-xlsx")
+async def export_roster_xlsx(
+    course_id: uuid.UUID,
+    current: CurrentUser = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> Response:
+    """Export active student roster to .xlsx with formula injection protection (T2-P-M1-03)."""
+    content, filename = await RosterService(db).export_roster_xlsx(course_id, current.user)
+    return Response(
+        content=content,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={
+            "Content-Disposition": f'attachment; filename="{filename}"'
+        },
+    )
+
+
 # ------------------------------------------------------------------
 # Groups & Partitioning
 # ------------------------------------------------------------------

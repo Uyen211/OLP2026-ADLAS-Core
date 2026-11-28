@@ -53,7 +53,7 @@ from app.modules.course.models import (
     LearningObjective,
 )
 from app.modules.course.repository import CourseRepository
-from app.modules.course.roster_ingestion import parse_roster_bytes
+from app.modules.course.roster_ingestion import build_roster_export_xlsx, parse_roster_bytes
 from app.modules.course.schemas import (
     CourseCloneRequest,
     CourseCreate,
@@ -824,6 +824,29 @@ class RosterService:
             for enrollment, user in rows
         ]
         return RosterPageResponse(total=total, page=page, page_size=page_size, items=items)
+
+    async def export_roster_xlsx(self, course_id: uuid.UUID, actor: User) -> Tuple[bytes, str]:
+        """Export full course roster to .xlsx with formula injection protection (T2-P-M1-03)."""
+        course = await self.course_svc._assert_instructor(course_id, actor)
+        rows, _ = await self.repo.list_active_students_with_users(
+            course_id=course_id,
+            page=1,
+            page_size=10000,
+        )
+        data = [
+            {
+                "user_code": user.user_code or "",
+                "full_name": user.full_name or "",
+                "email": user.email,
+                "role": enrollment.contextual_role,
+                "status": enrollment.enrollment_status,
+                "enrolled_at": enrollment.enrolled_at.strftime("%Y-%m-%d %H:%M:%S") if enrollment.enrolled_at else "",
+            }
+            for enrollment, user in rows
+        ]
+        content = build_roster_export_xlsx(course.course_code, course.name, data)
+        filename = f"danh-sach-lop-{course.course_code}.xlsx"
+        return content, filename
 
     async def add_single_student(
         self,

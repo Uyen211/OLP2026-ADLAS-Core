@@ -7,6 +7,17 @@ from fastapi import status
 from app.core.exceptions import ADLASException
 
 
+class UserAlreadyExistsException(ADLASException):
+    """E-AUTH-02: User with the specified email or identifier already exists."""
+
+    def __init__(self, identifier: Optional[str] = None):
+        super().__init__(
+            code="E-AUTH-02",
+            detail=f"Tai khoan voi email '{identifier}' da ton tai." if identifier else "Email nay da duoc su dung.",
+            status_code=status.HTTP_409_CONFLICT,
+        )
+
+
 class InvalidCredentialsWithAttemptsException(ADLASException):
     """E-5: Invalid credentials with remaining attempts metadata."""
 

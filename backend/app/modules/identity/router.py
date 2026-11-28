@@ -17,12 +17,24 @@ from app.modules.identity.schemas import (
     MfaSetupResponse,
     MfaVerifyRequest,
     RefreshRequest,
+    RegisterRequest,
+    RegisterResponse,
     ResetPasswordRequest,
     TokenResponse,
 )
 from app.modules.identity.service import AuthService
 
 router = APIRouter(prefix="/api/v1/auth", tags=["Authentication & Identity"])
+
+
+@router.post("/register", response_model=RegisterResponse, status_code=status.HTTP_201_CREATED)
+async def register(
+    payload: RegisterRequest,
+    db: AsyncSession = Depends(get_db),
+) -> RegisterResponse:
+    """Self-register a new user account (T2-P-M1-01)."""
+    service = AuthService(db)
+    return await service.register_user(payload)
 
 
 def _extract_client_ip(request: Request) -> str | None:

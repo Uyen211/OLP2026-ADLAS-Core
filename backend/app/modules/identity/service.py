@@ -24,6 +24,7 @@ from app.modules.identity.exceptions import (
     PasswordMismatchException,
     ResetTokenInvalidException,
     UnauthorizedTokenException,
+    UserAlreadyExistsException,
     WeakPasswordException,
 )
 from app.modules.identity.mfa_store import IMfaSecretStore, default_mfa_store
@@ -34,6 +35,8 @@ from app.modules.identity.schemas import (
     LoginResponse,
     MeResponse,
     MfaSetupResponse,
+    RegisterRequest,
+    RegisterResponse,
     TokenResponse,
 )
 from app.modules.identity.totp import (
@@ -216,6 +219,30 @@ class AuthService:
             token_type="bearer",
             expires_in=int(access_expires.total_seconds()),
             user=me,
+        )
+
+    async def register_user(self, payload: RegisterRequest) -> RegisterResponse:
+        """Self-register a new user account with bcrypt password hashing (T2-P-M1-01)."""
+        existing = await self.repo.get_by_email(payload.email)
+        if existing:
+            raise UserAlreadyExistsException(identifier=payload.email)
+
+        pwd_hash = hash_password(payload.password)
+        role = "TEACHER" if payload.role == "INSTRUCTOR" else "USER"
+        user = await self.repo.create_user(
+            email=payload.email,
+            password_hash=pwd_hash,
+            full_name=payload.full_name,
+            system_role=role,
+        )
+
+        return RegisterResponse(
+            id=user.id,
+            email=user.email,
+            full_name=user.full_name,
+            role=payload.role,
+            status="ACTIVE" if user.is_active else "INACTIVE",
+            created_at=user.created_at,
         )
 
     async def authenticate(
