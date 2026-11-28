@@ -28,6 +28,7 @@ import { RegisterPage } from "../../features/tv3/auth/pages/RegisterPage";
 import { ProjectGroupWorkspacePage } from "../../features/tv3/assessment/pages/ProjectGroupWorkspacePage";
 import { PeerReviewPage } from "../../features/tv3/assessment/pages/PeerReviewPage";
 import { QuestionBankPage } from "../../features/tv3/examination/pages/QuestionBankPage";
+import { StrictExamTakingPage } from "../../features/tv3/examination/pages/StrictExamTakingPage";
 import { MfaVerifyPage } from "./pages/auth/MfaVerifyPage";
 import { ResetPasswordPage } from "./pages/auth/ResetPasswordPage";
 import { CourseDetailPage } from "./pages/course/CourseDetailPage";
@@ -192,6 +193,14 @@ export const MainApp: React.FC = () => {
           element={
             <ProtectedRoute>
               <ExamTakingPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/courses/:courseId/exams/:quizId/take-strict"
+          element={
+            <ProtectedRoute>
+              <StrictExamTakingPage />
             </ProtectedRoute>
           }
         />
