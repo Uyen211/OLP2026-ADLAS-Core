@@ -451,6 +451,10 @@ class ExaminationRepository:
         Atomically persist autosave payload only when `incoming_seq_num > seq_num`.
         Returns True if the row was updated, False if the packet was stale.
         """
+        strikes_delta = max(0, tab_blur_delta) + max(0, fullscreen_exit_delta)
+        if violation_event and strikes_delta == 0:
+            strikes_delta = 1
+
         values: Dict[str, Any] = {
             "seq_num": incoming_seq_num,
             "student_answers": student_answers,
@@ -458,11 +462,13 @@ class ExaminationRepository:
             "fullscreen_exit_count": (
                 QuizSubmission.fullscreen_exit_count + max(0, fullscreen_exit_delta)
             ),
+            "strike_count": QuizSubmission.strike_count + strikes_delta,
         }
         if flagged_questions is not None:
             values["flagged_questions"] = flagged_questions
         if violation_event is not None:
             values["violation_logs"] = QuizSubmission.violation_logs.concat([violation_event])
+            values["violation_logs_json"] = QuizSubmission.violation_logs_json.concat([violation_event])
 
         stmt = (
             update(QuizSubmission)

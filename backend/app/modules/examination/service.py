@@ -1316,6 +1316,12 @@ class ExaminationService:
         if accepted:
             await self.db.refresh(refreshed)
 
+        quiz = await self.repo.get_quiz_by_id(submission.quiz_id)
+        if quiz and quiz.strict_mode_enabled:
+            if refreshed.strike_count >= quiz.max_strikes and not refreshed.is_flagged:
+                refreshed.is_flagged = True
+                await self.db.flush()
+
         exp_utc = (
             _ensure_utc(refreshed.expires_at)
             if refreshed.expires_at is not None
@@ -1329,6 +1335,8 @@ class ExaminationService:
             remaining_seconds=remaining,
             tab_blur_count=refreshed.tab_blur_count,
             fullscreen_exit_count=refreshed.fullscreen_exit_count,
+            strike_count=refreshed.strike_count,
+            is_flagged=refreshed.is_flagged,
         )
 
     async def submit_attempt(
