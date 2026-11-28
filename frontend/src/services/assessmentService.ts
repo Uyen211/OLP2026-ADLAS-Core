@@ -10,6 +10,12 @@ import type {
   AssignmentDetail,
   AssignmentSummaryItem,
   AssignmentUpdateRequest,
+  GroupCreateRequest,
+  MilestoneCreateRequest,
+  MilestoneResponse,
+  PeerReviewResponse,
+  PeerReviewSubmitRequest,
+  PeerReviewSummaryResponse,
   PledgeSignRequest,
   PledgeSignResponse,
   PledgeStatusResponse,
@@ -17,10 +23,13 @@ import type {
   PresignedUploadUrlResponse,
   RubricResponse,
   RubricSaveRequest,
+  StudentGroupResponse,
   Submission,
   SubmissionCreateRequest,
   SubmissionReviewDetailResponse,
   SubmissionReviewSummaryItem,
+  TopicCreateRequest,
+  TopicResponse,
   VivaAnswerSubmitRequest,
   VivaAnswerSubmitResponse,
   VivaSecurityViolationRequest,
@@ -259,6 +268,80 @@ export const assessmentService = {
         method: "POST",
         body: payload,
       }
+    );
+  },
+
+  // ----------------------------------------------------------------------
+  // Milestones, Topics, Groups, Peer Review (TV3 Realigned)
+  // ----------------------------------------------------------------------
+  listMilestones(assignmentId: string): Promise<MilestoneResponse[]> {
+    return httpRequest<MilestoneResponse[]>(`/assessments/assignments/${assignmentId}/milestones`);
+  },
+
+  saveMilestones(assignmentId: string, milestones: MilestoneCreateRequest[]): Promise<MilestoneResponse[]> {
+    return httpRequest<MilestoneResponse[]>(`/assessments/assignments/${assignmentId}/milestones`, {
+      method: "POST",
+      body: milestones,
+    });
+  },
+
+  listTopics(assignmentId: string): Promise<TopicResponse[]> {
+    return httpRequest<TopicResponse[]>(`/assessments/assignments/${assignmentId}/topics`);
+  },
+
+  createTopic(assignmentId: string, payload: TopicCreateRequest): Promise<TopicResponse> {
+    return httpRequest<TopicResponse>(`/assessments/assignments/${assignmentId}/topics`, {
+      method: "POST",
+      body: payload,
+    });
+  },
+
+  createGroup(assignmentId: string, payload: GroupCreateRequest): Promise<StudentGroupResponse> {
+    return httpRequest<StudentGroupResponse>(`/assessments/assignments/${assignmentId}/groups`, {
+      method: "POST",
+      body: payload,
+    });
+  },
+
+  joinGroupByCode(assignmentId: string, joinCode: string): Promise<StudentGroupResponse> {
+    return httpRequest<StudentGroupResponse>(`/assessments/assignments/${assignmentId}/groups/join`, {
+      method: "POST",
+      body: { join_code: joinCode },
+    });
+  },
+
+  selectGroupTopic(groupId: string, topicId: string): Promise<StudentGroupResponse> {
+    return httpRequest<StudentGroupResponse>(`/assessments/groups/${groupId}/topic`, {
+      method: "POST",
+      body: { topic_id: topicId },
+    });
+  },
+
+  autoAssignGroups(assignmentId: string): Promise<StudentGroupResponse[]> {
+    return httpRequest<StudentGroupResponse[]>(`/assessments/assignments/${assignmentId}/groups/auto-assign`, {
+      method: "POST",
+    });
+  },
+
+  listGroups(assignmentId: string): Promise<StudentGroupResponse[]> {
+    return httpRequest<StudentGroupResponse[]>(`/assessments/assignments/${assignmentId}/groups`);
+  },
+
+  getMyGroup(assignmentId: string): Promise<StudentGroupResponse> {
+    return httpRequest<StudentGroupResponse>(`/assessments/assignments/${assignmentId}/groups/my-group`);
+  },
+
+  submitPeerReview(assignmentId: string, payload: PeerReviewSubmitRequest): Promise<PeerReviewResponse> {
+    return httpRequest<PeerReviewResponse>(`/assessments/assignments/${assignmentId}/peer-reviews`, {
+      method: "POST",
+      body: payload,
+    });
+  },
+
+  getPeerReviewFactors(assignmentId: string, groupId: string, milestoneId?: string): Promise<PeerReviewSummaryResponse> {
+    const qs = milestoneId ? `?milestone_id=${encodeURIComponent(milestoneId)}` : "";
+    return httpRequest<PeerReviewSummaryResponse>(
+      `/assessments/assignments/${assignmentId}/groups/${groupId}/peer-reviews/factors${qs}`
     );
   },
 };

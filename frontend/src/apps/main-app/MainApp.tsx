@@ -25,6 +25,7 @@ import { ToastContainer } from "./components/Toast";
 import { ForgotPasswordPage } from "./pages/auth/ForgotPasswordPage";
 import { LoginPage } from "./pages/auth/LoginPage";
 import { RegisterPage } from "../../features/tv3/auth/pages/RegisterPage";
+import { ProjectGroupWorkspacePage } from "../../features/tv3/assessment/pages/ProjectGroupWorkspacePage";
 import { MfaVerifyPage } from "./pages/auth/MfaVerifyPage";
 import { ResetPasswordPage } from "./pages/auth/ResetPasswordPage";
 import { CourseDetailPage } from "./pages/course/CourseDetailPage";
@@ -101,6 +102,22 @@ export const MainApp: React.FC = () => {
           element={
             <ProtectedRoute>
               <AssignmentDetailPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/courses/:courseId/assignments/:assignmentId/groups"
+          element={
+            <ProtectedRoute>
+              <ProjectGroupWorkspacePage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/assignments/:assignmentId/groups"
+          element={
+            <ProtectedRoute>
+              <ProjectGroupWorkspacePage />
             </ProtectedRoute>
           }
         />

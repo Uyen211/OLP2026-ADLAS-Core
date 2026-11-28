@@ -21,6 +21,7 @@ import {
   ShieldCheck,
   Sparkles,
   UploadCloud,
+  Users,
 } from "lucide-react";
 import { clsx } from "clsx";
 
@@ -402,6 +403,18 @@ export const AssignmentDetailPage: React.FC = () => {
                 </MmButton>
               </Link>
             )}
+            <Link
+              to={
+                resolvedCourseId
+                  ? `/courses/${resolvedCourseId}/assignments/${assignment.id}/groups`
+                  : `/assignments/${assignment.id}/groups`
+              }
+            >
+              <MmButton variant="secondary" size="sm">
+                <Users className="h-4 w-4" />
+                <span>Nhóm đồ án & Giai đoạn</span>
+              </MmButton>
+            </Link>
             <PillTabs
               items={[
                 { value: "review", label: "Kiểm tra bài nộp & Viva (Giảng viên)" },

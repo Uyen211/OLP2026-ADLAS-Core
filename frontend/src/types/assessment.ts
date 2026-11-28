@@ -366,3 +366,110 @@ export interface SubmissionReviewDetailResponse {
   answers: Record<string, VivaAnswerEntry>;
   violation_logs: VivaViolationLog[];
 }
+
+// ----------------------------------------------------------------------
+// Milestones, Collaborative Groups, and Peer Review (TV3 Realigned)
+// ----------------------------------------------------------------------
+export interface MilestoneCreateRequest {
+  title: string;
+  due_date: string;
+  until_date?: string | null;
+  weight_percent: number;
+  sort_order?: number;
+}
+
+export interface MilestoneResponse {
+  id: string;
+  assignment_id: string;
+  title: string;
+  due_date: string;
+  until_date?: string | null;
+  weight_percent: number;
+  sort_order: number;
+  created_at: string;
+}
+
+export interface TopicCreateRequest {
+  topic_code: string;
+  title: string;
+  description?: string;
+  max_groups?: number;
+}
+
+export interface TopicResponse {
+  id: string;
+  assignment_id: string;
+  topic_code: string;
+  title: string;
+  description?: string | null;
+  max_groups: number;
+  current_groups_count: number;
+  is_active: boolean;
+  created_at: string;
+}
+
+export interface GroupMemberResponse {
+  id: string;
+  group_id: string;
+  student_id: string;
+  student_name?: string;
+  student_email?: string;
+  role: string;
+  joined_at: string;
+}
+
+export interface StudentGroupResponse {
+  id: string;
+  assignment_id: string;
+  group_name: string;
+  join_code: string;
+  topic_id?: string | null;
+  topic_title?: string | null;
+  leader_student_id: string;
+  is_finalized: boolean;
+  members: GroupMemberResponse[];
+  created_at: string;
+}
+
+export interface GroupCreateRequest {
+  group_name: string;
+  member_ids?: string[];
+  topic_id?: string;
+}
+
+export interface PeerReviewSubmitRequest {
+  milestone_id?: string | null;
+  reviewee_id: string;
+  criteria_scores: Record<string, number>;
+  total_score: number;
+  comment?: string | null;
+}
+
+export interface PeerReviewResponse {
+  id: string;
+  assignment_id: string;
+  milestone_id?: string | null;
+  reviewee_id: string;
+  criteria_scores_json?: Record<string, number>;
+  total_score: number;
+  comment?: string | null;
+  submitted_at: string;
+}
+
+export interface PeerReviewMemberSummary {
+  student_id: string;
+  student_name: string;
+  student_email: string;
+  average_score_received: number;
+  group_average_score: number;
+  factor_f: number;
+  raw_grade: number;
+  adjusted_grade: number;
+}
+
+export interface PeerReviewSummaryResponse {
+  assignment_id: string;
+  group_id: string;
+  milestone_id?: string | null;
+  summaries: PeerReviewMemberSummary[];
+}
